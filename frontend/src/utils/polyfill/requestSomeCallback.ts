@@ -1,15 +1,15 @@
-export function requestAnimationFrame(callback: () => void) {
+export function appRequestAnimationFrame(callback: () => void) {
   if (typeof window.requestAnimationFrame === "function") {
     return window.requestAnimationFrame(callback);
   }
-  return setTimeout(callback, 16);
+  return setTimeout(callback, 16) as ReturnType<typeof window.requestAnimationFrame>;
 }
 
-export function requestIdleCallback(callback: () => void) {
+export function appRequestIdleCallback(callback: () => void) {
   if (typeof window.requestIdleCallback === "function") {
     return window.requestIdleCallback(callback);
   }
-  return requestAnimationFrame(callback);
+  return appRequestAnimationFrame(callback) as ReturnType<typeof window.requestIdleCallback>;
 }
 
 export function cancelAnimationOrIdleCallback(id: number | null) {
@@ -21,4 +21,11 @@ export function cancelAnimationOrIdleCallback(id: number | null) {
     window.cancelIdleCallback(id);
   }
   clearTimeout(id);
+}
+
+export function appQueueMicrotask(callback: () => void) {
+  if (typeof window.queueMicrotask === "function") {
+    window.queueMicrotask(callback);
+  }
+  setTimeout(callback, 0);
 }

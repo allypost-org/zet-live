@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue } from "motion/react";
 import {
-  requestAnimationFrame,
+  appRequestAnimationFrame,
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
 
@@ -63,7 +63,7 @@ export function BottomSheet({
     if (open) {
       const sheetHeight = sheetRef.current?.offsetHeight ?? 300;
       y.set(sheetHeight);
-      timeout = requestAnimationFrame(() => {
+      timeout = appRequestAnimationFrame(() => {
         animate(y, 0, ENTER);
       });
     } else {

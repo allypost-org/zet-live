@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM user_oauth_identities\n        WHERE user_id = ? AND provider = ?\n          AND (SELECT COUNT(*) FROM user_oauth_identities WHERE user_id = ?) > 1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "eb1785d05d1aedbb3f6c90ddbee43f280c283e59398652cbc963a6fafee38b1e"
+}

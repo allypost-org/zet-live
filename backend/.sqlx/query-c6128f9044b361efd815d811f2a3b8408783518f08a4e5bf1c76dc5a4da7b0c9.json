@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO user_notices\n            ( id, user_id, text, severity, created_at )\n        VALUES\n            ( ?, ?, ?, ?, ? )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "c6128f9044b361efd815d811f2a3b8408783518f08a4e5bf1c76dc5a4da7b0c9"
+}

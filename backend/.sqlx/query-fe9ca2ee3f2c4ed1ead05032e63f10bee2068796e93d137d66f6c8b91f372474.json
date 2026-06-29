@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO user_settings (user_id, settings, updated_at)\n        SELECT ?, settings, updated_at\n        FROM user_settings\n        WHERE user_id = ?\n          AND NOT EXISTS (SELECT 1 FROM user_settings WHERE user_id = ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "fe9ca2ee3f2c4ed1ead05032e63f10bee2068796e93d137d66f6c8b91f372474"
+}

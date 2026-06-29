@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO oauth_states\n            ( state\n            , provider\n            , pkce_verifier\n            , link\n            , origin\n            , user_id\n            , created_at\n            , expires_at\n            )\n        VALUES\n            ( ?\n            , ?\n            , ?\n            , ?\n            , ?\n            , ?\n            , ?\n            , ?\n            )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "d5722c8ece4f2e0f833add05a6c5043a461a3e8f525462f75030655eb715cb2b"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE user_oauth_identities\n        SET provider_email        = ?,\n            provider_display_name = ?,\n            provider_avatar_url   = ?,\n            updated_at            = ?\n        WHERE id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "72c062d4a20678b62c001fdf3753ad282fb41c0af28e4283c25715de32aabaea"
+}

@@ -185,6 +185,25 @@ pub struct ServerConfig {
     /// You can set the port to 0 to have the server pick a random available port.
     #[clap(long, env = "ADMIN_BIND_TO")]
     pub admin_bind_to: Option<SocketAddr>,
+
+    /// The public base URL of the application, used to build `OAuth2` redirect
+    /// URIs (e.g. `https://zet-live.example.com`). Required when any auth
+    /// provider is enabled in the admin page; if absent, user accounts are
+    /// disabled entirely.
+    #[clap(long, env = "APP_URL")]
+    pub app_url: Option<url::Url>,
+
+    /// Comma-separated list of extra frontend origins allowed as the OAuth
+    /// popup `postMessage` target (which carries the session token). The
+    /// `APP_URL` origin is always allowed automatically; this is only needed
+    /// for split-origin setups (e.g. Vite on `http://localhost:5173` while the
+    /// backend is on `:9011`).
+    #[clap(long, env = "ALLOWED_FRONTEND_ORIGINS", value_delimiter = ',')]
+    pub allowed_frontend_origins: Vec<String>,
+
+    /// Session token lifetime in seconds.
+    #[clap(long, env = "SESSION_MAX_AGE", default_value = "30 days")]
+    pub session_max_age: jiff::Span,
 }
 
 #[derive(Debug, Clone)]

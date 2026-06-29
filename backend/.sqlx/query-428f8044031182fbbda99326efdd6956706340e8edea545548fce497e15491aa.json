@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT\n              id            AS \"id!\"\n            , category      AS \"category!\"\n            , message       AS \"message!\"\n            , name\n            , contact\n            , meta_url\n            , meta_ua\n            , meta_lang\n            , meta_build\n            , ip            AS \"ip!\"\n            , created_at    AS \"created_at!\"\n            , handled       AS \"handled!\"\n        FROM feedback\n        WHERE id = ?\n        ",
+  "query": "\n            SELECT\n                  f.id            AS \"id!\"\n                , f.category      AS \"category!\"\n                , f.message       AS \"message!\"\n                , f.name\n                , f.contact\n                , f.meta_url\n                , f.meta_ua\n                , f.meta_lang\n                , f.meta_build\n                , f.ip            AS \"ip!\"\n                , f.created_at    AS \"created_at!\"\n                , f.handled       AS \"handled!\"\n                , f.dismissed     AS \"dismissed!\"\n                , f.reply\n                , f.replied_at\n                , f.user_id\n                , u.email         AS \"user_email\"\n                , u.display_name  AS \"user_display_name\"\n            FROM feedback f\n            LEFT JOIN users u ON u.id = f.user_id\n            WHERE f.handled = 0 AND f.dismissed = 0 AND f.reply IS NULL\n            ORDER BY f.created_at DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -134,10 +134,76 @@
             "name": "handled"
           }
         }
+      },
+      {
+        "name": "dismissed!",
+        "ordinal": 12,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "feedback",
+            "name": "dismissed"
+          }
+        }
+      },
+      {
+        "name": "reply",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "feedback",
+            "name": "reply"
+          }
+        }
+      },
+      {
+        "name": "replied_at",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "feedback",
+            "name": "replied_at"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 15,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "feedback",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "user_email",
+        "ordinal": 16,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "name": "user_display_name",
+        "ordinal": 17,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "display_name"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false,
@@ -151,8 +217,14 @@
       true,
       false,
       false,
-      false
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
     ]
   },
-  "hash": "d4d59de7fa6b988fadd759ed8b50c3d0c93f9f0dde4f951b0daae8645775625f"
+  "hash": "428f8044031182fbbda99326efdd6956706340e8edea545548fce497e15491aa"
 }

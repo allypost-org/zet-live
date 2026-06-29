@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE feedback SET user_id = ? WHERE user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "29f98bdf4105013c0fb5e453a93d765123b8d14be5ef94043d09415c3fb6973f"
+}

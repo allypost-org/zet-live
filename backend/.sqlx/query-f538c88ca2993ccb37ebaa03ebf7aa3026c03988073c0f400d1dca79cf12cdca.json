@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT provider,\n               provider_email,\n               provider_display_name,\n               provider_avatar_url\n        FROM user_oauth_identities\n        WHERE user_id = ?\n        ORDER BY created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_oauth_identities",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "provider_email",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_oauth_identities",
+            "name": "provider_email"
+          }
+        }
+      },
+      {
+        "name": "provider_display_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_oauth_identities",
+            "name": "provider_display_name"
+          }
+        }
+      },
+      {
+        "name": "provider_avatar_url",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_oauth_identities",
+            "name": "provider_avatar_url"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "f538c88ca2993ccb37ebaa03ebf7aa3026c03988073c0f400d1dca79cf12cdca"
+}

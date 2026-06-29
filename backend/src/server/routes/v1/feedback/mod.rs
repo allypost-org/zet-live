@@ -5,14 +5,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::{Json, response::IntoResponse};
+use axum::{Json, http::HeaderMap, response::IntoResponse};
 use axum_client_ip::ClientIp;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
 
-use crate::{config::project::ProjectConfig, database::Database, server::error::ApiError};
+use crate::{
+    auth::resolve_current_user, config::project::ProjectConfig, database::Database,
+    server::error::ApiError,
+};
 
 const MAX_MESSAGE_LEN: usize = 5_000;
 const MAX_NAME_LEN: usize = 200;
@@ -75,6 +78,7 @@ pub struct FeedbackMeta {
 
 pub async fn submit(
     ClientIp(ip): ClientIp,
+    headers: HeaderMap,
     Json(payload): Json<FeedbackPayload>,
 ) -> impl IntoResponse {
     if let Some(honeypot) = payload.website.as_deref() {
@@ -129,6 +133,13 @@ pub async fn submit(
     let build_default = ProjectConfig::app_and_build_date();
     let meta_build = meta_build.unwrap_or_else(|| build_default.to_string());
 
+    // Optional: attribute the feedback to the authenticated user. Resolved
+    // server-side from the session (never trusted from the client body).
+    let user_id = resolve_current_user(&headers).await.map(|r| r.user.id);
+    if let Some(ref uid) = user_id {
+        debug!(%ip, %uid, category, "Authenticated feedback");
+    }
+
     let result = sqlx::query!(
         "
         INSERT INTO feedback
@@ -142,9 +153,10 @@ pub async fn submit(
             , meta_build
             , ip
             , created_at
+            , user_id
             )
         VALUES
-            ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
+            ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
         ",
         category,
         message,
@@ -156,6 +168,7 @@ pub async fn submit(
         meta_build,
         ip_str,
         now,
+        user_id,
     )
     .execute(&Database::pool())
     .await;
@@ -170,6 +183,60 @@ pub async fn submit(
             ApiError::internal("Failed to store feedback").into_response()
         }
     }
+}
+
+/// `GET /feedback/mine` -> the authenticated user's submitted feedback, with
+/// status and any admin reply (read-only).
+pub async fn mine(crate::auth::CurrentUser(user): crate::auth::CurrentUser) -> impl IntoResponse {
+    let rows = match sqlx::query!(
+        "
+        SELECT id            AS \"id!: i64\",
+               category      AS \"category!: String\",
+               message       AS \"message!: String\",
+               created_at    AS \"created_at!: String\",
+               handled       AS \"handled!: i64\",
+               dismissed     AS \"dismissed!: i64\",
+               reply
+        FROM feedback
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        ",
+        user.id,
+    )
+    .fetch_all(&crate::database::Database::pool())
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            error!(error = %e, "Failed to fetch user feedback");
+            return ApiError::internal("Failed to fetch feedback").into_response();
+        }
+    };
+
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            let status = if r.reply.is_some() {
+                "replied"
+            } else if r.dismissed != 0 {
+                "dismissed"
+            } else if r.handled != 0 {
+                "acknowledged"
+            } else {
+                "open"
+            };
+            serde_json::json!({
+                "id": r.id,
+                "category": r.category,
+                "message": r.message,
+                "createdAt": r.created_at,
+                "status": status,
+                "reply": r.reply,
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({ "items": out })).into_response()
 }
 
 async fn check_rate_limit(ip: IpAddr) -> Result<(), ApiError> {

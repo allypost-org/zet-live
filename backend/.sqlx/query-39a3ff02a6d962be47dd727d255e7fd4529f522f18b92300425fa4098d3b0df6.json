@@ -1,0 +1,57 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT u.id,\n               u.display_name,\n               u.email,\n               COALESCE(\n                 (SELECT GROUP_CONCAT(provider, ',' ORDER BY created_at)\n                  FROM user_oauth_identities WHERE user_id = u.id),\n                 ''\n               ) AS \"providers!: String\"\n        FROM users u\n        ORDER BY u.created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "display_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "email",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "name": "providers!: String",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "39a3ff02a6d962be47dd727d255e7fd4529f522f18b92300425fa4098d3b0df6"
+}

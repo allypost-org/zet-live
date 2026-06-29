@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM pending_transfers WHERE expires_at < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "a483585bc96bb02c2fabad10e0fc1b43196e160223e6b092feaff8596d731709"
+}

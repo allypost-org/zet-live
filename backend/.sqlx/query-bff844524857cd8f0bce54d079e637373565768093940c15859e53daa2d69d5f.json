@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id            AS \"id!: String\",\n               text          AS \"text!: String\",\n               severity      AS \"severity!: String\"\n        FROM user_notices\n        WHERE user_id = ?\n        ORDER BY created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_notices",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "text!: String",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_notices",
+            "name": "text"
+          }
+        }
+      },
+      {
+        "name": "severity!: String",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_notices",
+            "name": "severity"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "bff844524857cd8f0bce54d079e637373565768093940c15859e53daa2d69d5f"
+}

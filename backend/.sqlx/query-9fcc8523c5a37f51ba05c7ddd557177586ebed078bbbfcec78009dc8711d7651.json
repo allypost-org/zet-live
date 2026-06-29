@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO data_deletion_requests\n            ( confirmation_code\n            , provider\n            , provider_subject\n            , user_id\n            , status\n            , created_at\n            )\n        VALUES\n            ( ?\n            , ?\n            , ?\n            , ?\n            , ?\n            , ?\n            )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "9fcc8523c5a37f51ba05c7ddd557177586ebed078bbbfcec78009dc8711d7651"
+}

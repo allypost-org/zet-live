@@ -1,6 +1,7 @@
 import { useStore } from "@/store";
 import type { GlobalNotice } from "@/app/entity/v1/message";
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
 const DISMISSED_KEY = "dismissed-notice-ids";
 
@@ -67,7 +68,11 @@ function NoticeItem({ notice, onDismiss }: { notice: GlobalNotice; onDismiss: ()
   const icon = getIcon(notice.severity);
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 10 }}
+      transition={{ duration: 0.15 }}
       className={`pointer-events-auto flex items-center gap-2 rounded-lg px-3 py-2 text-sm shadow-lg ${style}`}
     >
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
@@ -89,12 +94,13 @@ function NoticeItem({ notice, onDismiss }: { notice: GlobalNotice; onDismiss: ()
           />
         </svg>
       </button>
-    </div>
+    </motion.div>
   );
 }
 
 export function NoticeBar() {
   const globalNotices = useStore((s) => s.globalNotices);
+  const userNotices = useStore((s) => s.userNotices);
   const [dismissedIds, setDismissedState] = useState<Set<string>>(getDismissedIds);
 
   useEffect(() => {
@@ -123,9 +129,10 @@ export function NoticeBar() {
     };
   }, []);
 
-  if (!globalNotices || globalNotices.length === 0) return null;
+  const allNotices = [...(globalNotices ?? []), ...(userNotices ?? [])];
+  if (allNotices.length === 0) return null;
 
-  const visible = globalNotices.filter((n) => !dismissedIds.has(n.id));
+  const visible = allNotices.filter((n) => !dismissedIds.has(n.id));
   if (visible.length === 0) return null;
 
   const dismissNotice = (id: string) => {
@@ -134,16 +141,18 @@ export function NoticeBar() {
   };
 
   return (
-    <div className="pointer-events-none mt-2 flex flex-col gap-1.5">
-      {visible.map((notice) => (
-        <NoticeItem
-          key={notice.id}
-          notice={notice}
-          onDismiss={() => {
-            dismissNotice(notice.id);
-          }}
-        />
-      ))}
+    <div className="pointer-events-none flex flex-col gap-1.5">
+      <AnimatePresence>
+        {visible.map((notice) => (
+          <NoticeItem
+            key={notice.id}
+            notice={notice}
+            onDismiss={() => {
+              dismissNotice(notice.id);
+            }}
+          />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

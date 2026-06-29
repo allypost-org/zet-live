@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO pending_transfers\n            ( token_hash\n            , target_user_id\n            , provider\n            , provider_subject\n            , source_user_id\n            , expires_at\n            , created_at\n            )\n        VALUES\n            ( ?\n            , ?\n            , ?\n            , ?\n            , ?\n            , ?\n            , ?\n            )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "c2b53f374019c410b9644f3e8cffb325312ccc80d9e277683da4e2bd230d1f37"
+}

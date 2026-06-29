@@ -15,20 +15,36 @@ use axum::{
 };
 use axum_client_ip::ClientIp;
 use futures::{SinkExt, StreamExt};
-use tokio::{
-    sync::{Mutex, RwLock},
-    time,
-};
+use tokio::{sync::RwLock, time};
 use tracing::{debug, error, trace, warn};
 
 use super::{
     INITIAL_STATE, V1AppState,
     admin_notifications::{AdminNotification, NotificationTarget, get_admin_notification_receiver},
 };
-use crate::server::routes::v1::Transmission;
+use crate::{
+    auth::session,
+    server::routes::v1::{Broadcast, Transmission, Versioned},
+};
 
 pub static WS_CONNECTIONS: LazyLock<Arc<RwLock<HashMap<IpAddr, u32>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(tag = "t", content = "d", rename_all = "kebab-case")]
+enum ClientMessage {
+    Auth(Option<String>),
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ClientEnvelope {
+    #[serde(rename = "v")]
+    version: u64,
+    #[serde(flatten)]
+    message: ClientMessage,
+}
+
+const CLIENT_PROTOCOL_VERSION: u64 = 1;
 
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
@@ -41,13 +57,21 @@ pub async fn websocket_handler(
 async fn handle_admin_notification(
     notification: &AdminNotification,
     addr: IpAddr,
-    sender: &Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>,
+    user_id: Option<&str>,
+    session_id: Option<&str>,
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
 ) -> bool {
     match notification {
-        AdminNotification::Toast { bytes, target, ips } => {
+        AdminNotification::Toast {
+            bytes,
+            target,
+            ips,
+            account,
+        } => {
             let should_send = match target {
                 NotificationTarget::All => true,
                 NotificationTarget::Ips => ips.contains(&addr),
+                NotificationTarget::Account => account.as_deref() == user_id,
             };
 
             if !should_send {
@@ -55,8 +79,6 @@ async fn handle_admin_notification(
             }
 
             if sender
-                .lock()
-                .await
                 .send(Message::Binary(Bytes::from(bytes.clone())))
                 .await
                 .is_err()
@@ -64,10 +86,30 @@ async fn handle_admin_notification(
                 return false;
             }
         }
+        AdminNotification::SessionRevoked {
+            text,
+            user_id: target_user,
+            session_id: target_session,
+        } => {
+            if Some(target_user.as_str()) != user_id || Some(target_session.as_str()) != session_id
+            {
+                return true;
+            }
+
+            if sender
+                .send(Message::Text(text.clone().into()))
+                .await
+                .is_err()
+            {
+                return false;
+            }
+        }
     }
+
     true
 }
 
+#[allow(clippy::too_many_lines)]
 async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
     trace!(?stream, "Websocket opened");
     debug!(?addr, "Websocket opened");
@@ -77,10 +119,12 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
         .entry(addr)
         .and_modify(|x| *x += 1)
         .or_insert(1);
-    let (sender, _receiver) = stream.split();
-    let sender = Arc::new(Mutex::new(sender));
+    let (mut sender, mut receiver) = stream.split();
 
-    if let Err(e) = send_initial_state(sender.clone()).await {
+    let mut user_id = None;
+    let mut session_id = None;
+
+    if let Err(e) = send_initial_state(&mut sender).await {
         error!(?e, "Error sending initial state");
         cleanup_connection(addr).await;
         return;
@@ -99,8 +143,6 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
             _ = ping_interval.tick() => {
                 debug!(?addr, "Pinging client");
                 if sender
-                    .lock()
-                    .await
                     .send(Message::Ping(Bytes::from_static(&[1, 2, 3])))
                     .await
                     .is_err()
@@ -117,7 +159,7 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
                     }
                 };
 
-                if !handle_transmission(&transmission, addr, &sender).await {
+                if !handle_transmission(&transmission, addr, user_id.as_deref(), &mut sender).await {
                     break;
                 }
             }
@@ -134,8 +176,41 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
                     }
                 };
 
-                if !handle_admin_notification(&notification, addr, &sender).await {
+                if !handle_admin_notification(
+                    &notification,
+                    addr,
+                    user_id.as_deref(),
+                    session_id.as_deref(),
+                    &mut sender,
+                )
+                .await
+                {
                     break;
+                }
+            }
+            msg = receiver.next() => {
+                match msg {
+                    Some(Ok(Message::Text(text))) => {
+                        if let Some(new_state) = handle_client_text(&text, addr, &mut sender).await {
+                            match new_state {
+                                AuthState::Authenticated { user_id: uid, session_id: sid } => {
+                                    user_id = Some(uid);
+                                    session_id = Some(sid);
+                                }
+                                AuthState::Unauthenticated => {
+                                    user_id = None;
+                                    session_id = None;
+                                }
+                            }
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => {
+                        debug!(?addr, "Client closed WS");
+                        break;
+                    }
+                    other => {
+                        trace!(?other, "Received unhandled message");
+                    }
                 }
             }
         }
@@ -146,20 +221,30 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
     debug!(?addr, "Websocket closed");
 }
 
-/// Send a [`Transmission`] to a single client. Returns `false` if the
-/// connection should be closed due to a send error.
 async fn handle_transmission(
     transmission: &Transmission,
     addr: IpAddr,
-    sender: &Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>,
+    user_id: Option<&str>,
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
 ) -> bool {
     match transmission {
         Transmission::BroadcastToAll(data) => {
             trace!(to = ?addr, "Broadcasting data");
             sender
-                .lock()
-                .await
                 .send(Message::Binary(Bytes::clone(data)))
+                .await
+                .is_ok()
+        }
+        Transmission::UserNotice {
+            user_id: target,
+            bytes,
+        } => {
+            if Some(target.as_str()) != user_id {
+                return true;
+            }
+            trace!(to = ?addr, "Sending per-account notice");
+            sender
+                .send(Message::Binary(Bytes::clone(bytes)))
                 .await
                 .is_ok()
         }
@@ -177,17 +262,67 @@ async fn cleanup_connection(addr: IpAddr) {
     }
 }
 
+enum AuthState {
+    Authenticated { user_id: String, session_id: String },
+    Unauthenticated,
+}
+async fn handle_client_text(
+    text: &str,
+    addr: IpAddr,
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+) -> Option<AuthState> {
+    let Ok(envelope) = serde_json::from_str::<ClientEnvelope>(text) else {
+        warn!(?addr, "Malformed client message");
+        return None;
+    };
+    if envelope.version != CLIENT_PROTOCOL_VERSION {
+        warn!(
+            version = envelope.version,
+            ?addr,
+            "Unsupported client protocol version"
+        );
+        return None;
+    }
+    match envelope.message {
+        ClientMessage::Auth(Some(token)) => match session::lookup_session(&token).await {
+            Ok(Some(session_row)) => {
+                debug!(
+                    ?addr,
+                    user_id = %session_row.user_id,
+                    session_id = %session_row.id,
+                    "WS connection authenticated"
+                );
+                if let Err(e) = send_user_notices(sender, &session_row.user_id).await {
+                    warn!(?e, ?addr, "Failed to send user notices after auth");
+                }
+                Some(AuthState::Authenticated {
+                    user_id: session_row.user_id,
+                    session_id: session_row.id,
+                })
+            }
+            Ok(None) => {
+                warn!(?addr, "Invalid auth token over WS");
+                None
+            }
+            Err(e) => {
+                error!(?e, ?addr, "DB error during WS auth");
+                None
+            }
+        },
+        ClientMessage::Auth(None) => {
+            debug!(?addr, "WS connection deauthenticated");
+            Some(AuthState::Unauthenticated)
+        }
+    }
+}
+
 async fn send_initial_state(
-    sender: Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>,
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
 ) -> Result<(), axum::Error> {
     {
-        let vehicles = INITIAL_STATE.read().await.vehicles.clone();
+        let vehicles = INITIAL_STATE.vehicles().await.clone();
 
-        let res = sender
-            .lock()
-            .await
-            .send(Message::Binary(Bytes::from(vehicles)))
-            .await;
+        let res = sender.send(Message::Binary(vehicles)).await;
 
         if let Err(e) = res {
             error!(?e, "Error sending initial vehicles");
@@ -196,13 +331,9 @@ async fn send_initial_state(
     }
 
     {
-        let active_stops = INITIAL_STATE.read().await.active_stops.clone();
+        let active_stops = INITIAL_STATE.active_stops().await.clone();
 
-        let res = sender
-            .lock()
-            .await
-            .send(Message::Binary(Bytes::from(active_stops)))
-            .await;
+        let res = sender.send(Message::Binary(active_stops)).await;
 
         if let Err(e) = res {
             error!(?e, "Error sending initial active stops");
@@ -211,13 +342,9 @@ async fn send_initial_state(
     }
 
     {
-        let notices = INITIAL_STATE.read().await.notices.clone();
+        let notices = INITIAL_STATE.notices().await.clone();
         if !notices.is_empty() {
-            let res = sender
-                .lock()
-                .await
-                .send(Message::Binary(Bytes::from(notices)))
-                .await;
+            let res = sender.send(Message::Binary(notices)).await;
 
             if let Err(e) = res {
                 error!(?e, "Error sending initial notices");
@@ -227,13 +354,9 @@ async fn send_initial_state(
     }
 
     {
-        let gbfs_stations = INITIAL_STATE.read().await.gbfs_stations.clone();
+        let gbfs_stations = INITIAL_STATE.gbfs_stations().await.clone();
         if !gbfs_stations.is_empty() {
-            let res = sender
-                .lock()
-                .await
-                .send(Message::Binary(Bytes::from(gbfs_stations)))
-                .await;
+            let res = sender.send(Message::Binary(gbfs_stations)).await;
 
             if let Err(e) = res {
                 error!(?e, "Error sending initial GBFS stations");
@@ -243,4 +366,19 @@ async fn send_initial_state(
     }
 
     Ok(())
+}
+
+async fn send_user_notices(
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+    user_id: &str,
+) -> Result<(), axum::Error> {
+    let notices = crate::admin::user_notices::for_user(user_id).await;
+    if notices.is_empty() {
+        return Ok(());
+    }
+    let versioned = Versioned::new(1, Broadcast::UserNotices(notices));
+    let Ok(bytes) = minicbor_serde::to_vec(&versioned) else {
+        return Ok(());
+    };
+    sender.send(Message::Binary(Bytes::from(bytes))).await
 }

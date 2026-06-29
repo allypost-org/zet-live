@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM user_sessions WHERE id = ? RETURNING user_id AS \"user_id!: String\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id!: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_sessions",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "368f63cf77594338f95e2f3e7c8fed0a310c267ab9495f6259334a7806fe6168"
+}

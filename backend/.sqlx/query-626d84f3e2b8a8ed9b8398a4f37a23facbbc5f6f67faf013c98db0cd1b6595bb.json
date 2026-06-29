@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO link_tickets\n            ( token_hash\n            , user_id\n            , expires_at\n            , created_at\n            )\n        VALUES\n            ( ?\n            , ?\n            , ?\n            , ?\n            )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "626d84f3e2b8a8ed9b8398a4f37a23facbbc5f6f67faf013c98db0cd1b6595bb"
+}

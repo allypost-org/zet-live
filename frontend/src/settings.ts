@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { z } from "zod";
 
 export type MapStyleId = "3d" | "3d.dark" | "flat" | "satellite";
 export type MapThemeMode = "device" | "time" | "manual";
@@ -89,5 +90,53 @@ export function useSetting<T extends keyof Settings>(key: T): Settings[T] {
 
 export function updateSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
   settingsStore.setState({ [key]: value });
+  persist(settingsStore.getState());
+}
+
+export const SYNC_SETTINGS_KEYS = [
+  "mapStyle",
+  "mapThemeMode",
+  "wakeLockEnabled",
+  "uiThemeMode",
+  "uiThemeManual",
+  "showGbfsStations",
+  "showBuses",
+  "showTrams",
+] as const;
+
+export type SyncSettings = Pick<Settings, (typeof SYNC_SETTINGS_KEYS)[number]>;
+
+export const syncSettingsSchema = z.object({
+  mapStyle: z.string(),
+  mapThemeMode: z.string(),
+  wakeLockEnabled: z.boolean(),
+  uiThemeMode: z.string(),
+  uiThemeManual: z.string(),
+  showGbfsStations: z.boolean(),
+  showBuses: z.boolean(),
+  showTrams: z.boolean(),
+});
+
+export function serializeSync(state: Settings): SyncSettings {
+  return {
+    mapStyle: state.mapStyle,
+    mapThemeMode: state.mapThemeMode,
+    wakeLockEnabled: state.wakeLockEnabled,
+    uiThemeMode: state.uiThemeMode,
+    uiThemeManual: state.uiThemeManual,
+    showGbfsStations: state.showGbfsStations,
+    showBuses: state.showBuses,
+    showTrams: state.showTrams,
+  };
+}
+
+export function getSyncSettings(): SyncSettings {
+  return serializeSync(settingsStore.getState());
+}
+
+export function applySyncSettings(remote: unknown): void {
+  const parsed = syncSettingsSchema.safeParse(remote);
+  if (!parsed.success) return;
+  settingsStore.setState({ ...parsed.data } as Partial<Settings>);
   persist(settingsStore.getState());
 }

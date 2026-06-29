@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT id,\n                   client_id,\n                   client_secret,\n                   enabled\n            FROM auth_providers\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "auth_providers",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "client_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "auth_providers",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "name": "client_secret",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "auth_providers",
+            "name": "client_secret"
+          }
+        }
+      },
+      {
+        "name": "enabled",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "auth_providers",
+            "name": "enabled"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f57e851d76ea79346c6327ae02fb6cd4da0771eb320095b270d94ee8a3179234"
+}

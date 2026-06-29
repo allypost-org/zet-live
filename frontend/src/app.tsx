@@ -12,11 +12,16 @@ import { useUrlSync } from "@/hooks/use-url-sync";
 import { useSelectionFetcher } from "@/hooks/use-selection-fetcher";
 import { useVersionCheck } from "@/hooks/use-version-check";
 import { useTheme } from "@/hooks/use-theme";
+import { useCapabilities } from "@/hooks/use-capabilities";
+import { useAuth } from "@/hooks/use-auth";
+import { useSettingsSync } from "@/hooks/use-settings-sync";
 import { useStore } from "@/store";
 import { findNextStopIndex } from "@/app/trip-stop-times";
 import { useEffect, type ReactNode } from "react";
 import { SettingsButton, SettingsModal } from "./components/settings-modal";
 import { FeedbackButton, FeedbackModal } from "./components/feedback-modal";
+import { AuthButton } from "./components/auth-button";
+import { AuthModal } from "./components/auth-modal";
 import { NoticeBar } from "./components/notice-bar";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { useSetting } from "./settings";
@@ -32,6 +37,9 @@ export function App() {
   useSelectionFetcher();
   useVersionCheck();
   useTheme();
+  useCapabilities();
+  useAuth();
+  useSettingsSync();
 
   const wakeLockEnabled = useSetting("wakeLockEnabled");
   useWakeLock(wakeLockEnabled);
@@ -226,10 +234,11 @@ export function App() {
         ) : null}
       </BottomSheet>
 
-      <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2">
+      <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 *:pointer-events-auto">
         <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
           <SettingsButton />
           <FeedbackButton />
+          <AuthButton />
           <div className="h-4">
             <div className="absolute ml-1.5">
               <StatusBar />
@@ -237,11 +246,8 @@ export function App() {
           </div>
         </div>
 
-        <div className="pointer-events-none w-full max-w-md *:pointer-events-auto">
+        <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
           <SearchBar />
-        </div>
-
-        <div className="pointer-events-none col-span-2 *:pointer-events-auto">
           <NoticeBar />
         </div>
       </div>
@@ -249,6 +255,7 @@ export function App() {
       <Toaster position="top-center" />
       <SettingsModal />
       <FeedbackModal />
+      <AuthModal />
     </>
   );
 }

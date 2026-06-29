@@ -32,6 +32,10 @@ import {
 } from "@/utils/gbfs-icons";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
 import type { GbfsStationV1 } from "@/app/entity/v1/gbfs-station";
+import {
+  appRequestAnimationFrame,
+  cancelAnimationOrIdleCallback,
+} from "@/utils/polyfill/requestSomeCallback";
 
 const styleMap = new Map<MapStyleId, StyleSpecification>([
   ["3d", mapStyle3d as StyleSpecification],
@@ -170,15 +174,15 @@ function useRafSetData(
   const rafId = useRef<number | null>(null);
   useEffect(() => {
     if (!ready) return;
-    if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    if (rafId.current !== null) cancelAnimationOrIdleCallback(rafId.current);
     const captured = data;
-    rafId.current = requestAnimationFrame(() => {
+    rafId.current = appRequestAnimationFrame(() => {
       rafId.current = null;
       if (!mapRef.current) return;
       imperativeSetData(mapRef, sourceId, captured);
     });
     return () => {
-      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+      if (rafId.current !== null) cancelAnimationOrIdleCallback(rafId.current);
     };
   }, [sourceId, data, mapRef, ready]);
 }
@@ -363,9 +367,9 @@ export function MapContainer() {
   );
   useEffect(() => {
     if (!iconsReady) return;
-    if (vehiclesRafId.current !== null) cancelAnimationFrame(vehiclesRafId.current);
+    cancelAnimationOrIdleCallback(vehiclesRafId.current);
     const data = vehiclesGeoJson;
-    vehiclesRafId.current = requestAnimationFrame(() => {
+    vehiclesRafId.current = appRequestAnimationFrame(() => {
       vehiclesRafId.current = null;
       const map = mapRef.current?.getMap();
       if (!map) return;
@@ -387,7 +391,7 @@ export function MapContainer() {
       imperativeSetData(mapRef, "vehicles", data);
     });
     return () => {
-      if (vehiclesRafId.current !== null) cancelAnimationFrame(vehiclesRafId.current);
+      cancelAnimationOrIdleCallback(vehiclesRafId.current);
     };
   }, [iconsReady, vehiclesGeoJson]);
 

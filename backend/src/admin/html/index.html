@@ -71,7 +71,8 @@
       color: #94a3b8;
     }
 
-    input[type="text"] {
+    input[type="text"],
+    input[type="password"] {
       flex: 1;
       background: #0f172a;
       border: 1px solid #334155;
@@ -485,6 +486,21 @@
     </div>
   </div>
 
+  <h2>Auth Providers</h2>
+  <div class="card" id="auth-providers">
+    <p class="empty">Loading...</p>
+  </div>
+
+  <h2>Accounts</h2>
+  <div class="card" id="users">
+    <div class="filter-bar">
+      <button class="secondary" onclick="loadUsers()">Refresh</button>
+    </div>
+    <div id="users-list" class="feedback-list">
+      <p class="empty">Loading...</p>
+    </div>
+  </div>
+
   <h2>Global Notices</h2>
   <div class="card" id="notices">
     <p class="empty">Loading...</p>
@@ -513,15 +529,36 @@
           <option value="warning">Warning</option>
           <option value="error">Error</option>
         </select>
-        <select id="notify-target" onchange="toggleNotifyIps()">
+        <select id="notify-target" onchange="toggleNotifyTarget()">
           <option value="all">All Users</option>
           <option value="ips">Specific IPs</option>
+          <option value="account">Specific Account</option>
         </select>
         <button onclick="sendNotify()">Send</button>
       </div>
       <div class="notify-target-ips" id="notify-ips-container" style="display:none;">
         <p style="font-size:0.75rem;color:#94a3b8;margin:0 0 0.25rem;">Select IPs from active connections:</p>
         <div id="notify-ips-list"></div>
+      </div>
+      <div id="notify-account-container" style="display:none;margin-top:0.5rem;">
+        <select id="notify-account" style="width:100%;"></select>
+      </div>
+    </div>
+  </div>
+
+  <h2>Per-Account Notices</h2>
+  <div class="card" id="user-notices">
+    <p class="empty">Loading...</p>
+    <div class="add-notice-form" id="user-notice-add" style="margin-top:0.5rem;">
+      <select id="user-notice-account" style="width:100%;"></select>
+      <textarea id="user-notice-text" placeholder="Notice text (shown only to this account)..."></textarea>
+      <div class="add-notice-row">
+        <select id="user-notice-severity">
+          <option value="info">Info</option>
+          <option value="warning">Warning</option>
+          <option value="error">Error</option>
+        </select>
+        <button onclick="addUserNotice()">Add Notice</button>
       </div>
     </div>
   </div>
@@ -539,6 +576,16 @@
       <div class="actions">
         <button onclick="forceSync('static')">Sync Now</button>
       </div>
+    </div>
+  </div>
+
+  <h2>Sessions</h2>
+  <div class="card" id="sessions">
+    <div class="filter-bar">
+      <button class="secondary" onclick="loadSessions()">Refresh</button>
+    </div>
+    <div id="sessions-list" class="feedback-list">
+      <p class="empty">Loading...</p>
     </div>
   </div>
 
@@ -688,14 +735,17 @@
       await saveNotices([]);
     }
 
-    function toggleNotifyIps() {
+    function toggleNotifyTarget() {
       const target = document.getElementById('notify-target').value;
-      const container = document.getElementById('notify-ips-container');
-      container.style.display = target === 'ips' ? 'block' : 'none';
+      document.getElementById('notify-ips-container').style.display = target === 'ips' ? 'block' : 'none';
+      document.getElementById('notify-account-container').style.display = target === 'account' ? 'block' : 'none';
       if (target === 'ips') {
         renderNotifyIps();
       }
     }
+
+    // Backwards-compat alias for any old callers.
+    function toggleNotifyIps() { toggleNotifyTarget(); }
 
     function renderNotifyIps() {
       const el = document.getElementById('notify-ips-list');
@@ -708,6 +758,103 @@
       el.innerHTML = entries.map(([ip]) =>
         '<label><input type="checkbox" class="notify-ip-check" value="' + ip + '"> ' + ip + '</label>'
       ).join('');
+    }
+
+    function userLabel(u) {
+      const who = u.displayName || u.email || u.id;
+      return who + (u.email && u.email !== who ? ' (' + u.email + ')' : '');
+    }
+
+    function populateAccountSelects() {
+      const users = (window._users || []);
+      const opts = users.length
+        ? users.map(u => '<option value="' + esc(u.id) + '">' + esc(userLabel(u)) + '</option>').join('')
+        : '<option value="" disabled>No accounts</option>';
+      ['notify-account', 'user-notice-account'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = opts;
+      });
+    }
+
+    async function loadUsers() {
+      try {
+        const res = await api('/users');
+        window._users = await res.json();
+        populateAccountSelects();
+        renderUsersList();
+      } catch {
+        window._users = [];
+        renderUsersList();
+      }
+    }
+
+    function renderUsersList() {
+      const el = document.getElementById('users-list');
+      const users = window._users || [];
+      if (!users.length) {
+        el.innerHTML = '<p class="empty">No accounts.</p>';
+        return;
+      }
+      el.innerHTML = users.map(u => {
+        const providers = (u.providers || []).join(', ') || '—';
+        return `<div class="row">
+          <span class="label">${esc(userLabel(u))}<br><small>ID: ${esc(u.id)} · Providers: ${esc(providers)}</small></span>
+          <div class="actions">
+            <button onclick="revokeUserSessions('${esc(u.id)}')">Revoke sessions</button>
+            <button class="danger" onclick="deleteUserAccount('${esc(u.id)}')">Delete</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    async function deleteUserAccount(id) {
+      if (!confirm('Delete this account permanently? All sessions and linked providers will be removed. Feedback will be kept but anonymized.')) return;
+      const res = await api('/users/' + id, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) { alert('Failed to delete account'); return; }
+      await loadUsers();
+      await loadSessions();
+    }
+
+    async function revokeUserSessions(id) {
+      if (!confirm('Revoke all sessions for this user? They will be signed out everywhere.')) return;
+      const res = await api('/users/' + id + '/revoke-sessions', { method: 'POST' });
+      if (!res.ok) { alert('Failed to revoke sessions'); return; }
+      await loadSessions();
+    }
+
+    async function loadSessions() {
+      let sessions = [];
+      try {
+        const res = await api('/sessions');
+        sessions = await res.json();
+      } catch { /* ignore */ }
+      const el = document.getElementById('sessions-list');
+      if (!sessions || sessions.length === 0) {
+        el.innerHTML = '<p class="empty">No active sessions.</p>';
+        return;
+      }
+      const userMap = {};
+      (window._users || []).forEach(u => { userMap[u.id] = u; });
+      el.innerHTML = sessions.map(s => {
+        const u = userMap[s.userId] || {};
+        const userName = u.displayName || u.email || s.userId.slice(0, 8);
+        const userEmail = u.email;
+        const created = new Date(s.createdAt).toLocaleString();
+        const expires = new Date(s.expiresAt).toLocaleString();
+        const ua = s.userAgent || '—';
+        const ip = s.ip || '—';
+        return `<div class="row">
+          <span class="label">${esc(userName)}${userEmail && userEmail !== userName ? ` (${esc(userEmail)})` : ""}<br><small>${esc(ua)} · ${esc(ip)} · ${esc(created)} -> ${esc(expires)}</small></span>
+          <div class="actions"><button class="danger" onclick="deleteSession('${esc(s.id)}')">Revoke</button></div>
+        </div>`;
+      }).join('');
+    }
+
+    async function deleteSession(id) {
+      if (!confirm('Revoke this session? The user will be logged out.')) return;
+      const res = await api('/sessions/' + id, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) { alert('Failed to revoke session'); return; }
+      await loadSessions();
     }
 
     async function sendNotify() {
@@ -723,9 +870,57 @@
           alert('Select at least one IP');
           return;
         }
+      } else if (target === 'account') {
+        const account = document.getElementById('notify-account').value;
+        if (!account) { alert('Select an account'); return; }
+        body.account = account;
       }
       await api('/notify', { method: 'POST', body: JSON.stringify(body) });
       document.getElementById('notify-message').value = '';
+    }
+
+    async function loadUserNotices() {
+      let notices = [];
+      try {
+        const res = await api('/user-notices');
+        notices = await res.json();
+      } catch { /* ignore */ }
+      const el = document.getElementById('user-notices');
+      let html = '';
+      if (!notices || notices.length === 0) {
+        html += '<p class="empty">No per-account notices.</p>';
+      } else {
+        html += notices.map(n => `
+          <div class="row">
+            <span class="label">${esc(n.userDisplayName || n.userEmail || n.userId)}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;">${esc(n.text)} <span class="status ${n.severity === 'error' ? 'error' : n.severity === 'warning' ? 'warning' : ''}">${n.severity}</span></span>
+            <button class="danger" onclick="deleteUserNotice('${esc(n.id)}')">Delete</button>
+          </div>
+        `).join('');
+      }
+      // keep the add form (it has fixed ids) — render list above it
+      const addForm = el.querySelector('#user-notice-add');
+      el.innerHTML = html;
+      if (addForm) el.appendChild(addForm);
+      populateAccountSelects();
+    }
+
+    async function addUserNotice() {
+      const userId = document.getElementById('user-notice-account').value;
+      const text = document.getElementById('user-notice-text').value.trim();
+      const severity = document.getElementById('user-notice-severity').value;
+      if (!userId) { alert('Select an account'); return; }
+      if (!text) { alert('Enter notice text'); return; }
+      const res = await api('/user-notices', { method: 'POST', body: JSON.stringify({ userId, text, severity }) });
+      if (!res.ok && res.status !== 201) { alert('Failed to add notice'); return; }
+      document.getElementById('user-notice-text').value = '';
+      await loadUserNotices();
+    }
+
+    async function deleteUserNotice(id) {
+      const res = await api('/user-notices/' + id, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) { alert('Failed to delete notice'); return; }
+      await loadUserNotices();
     }
 
     async function saveSetting(name) {
@@ -817,32 +1012,61 @@
         : '';
       const contact = (f.name || f.contact)
         ? '<div class="feedback-contact">' +
-          (f.name ? '<strong>Name:</strong> ' + escapeHtml(f.name) : '') +
-          (f.name && f.contact ? ' · ' : '') +
-          (f.contact ? '<strong>Contact:</strong> ' + escapeHtml(f.contact) : '') +
-          '</div>'
+        (f.name ? '<strong>Name:</strong> ' + escapeHtml(f.name) : '') +
+        (f.name && f.contact ? ' · ' : '') +
+        (f.contact ? '<strong>Contact:</strong> ' + escapeHtml(f.contact) : '') +
+        '</div>'
         : '';
       const archiveLabel = f.handled ? 'Unarchive' : 'Archive';
       const archiveAction = f.handled ? 'false' : 'true';
+      const statusBadge = f.status
+        ? '<span class="status ' + (f.status === 'replied' ? 'success' : f.status === 'dismissed' ? 'error' : f.status === 'acknowledged' ? '' : 'warning') + '">' + f.status + '</span>'
+        : '';
+      const userBadge = f.userEmail
+        ? '<span class="feedback-ip">' + escapeHtml(f.userDisplayName || f.userEmail) + '</span>'
+        : '';
+      const replyBlock = f.reply
+        ? '<div class="feedback-message" style="border-left:3px solid #22c55e;padding-left:0.5rem;margin-top:0.25rem;"><strong>Reply:</strong> ' + escapeHtml(f.reply) + (f.repliedAt ? ' <span style="font-size:0.75rem;color:#94a3b8;">' + new Date(f.repliedAt).toLocaleString() + '</span>' : '') + '</div>'
+        : '';
       return '' +
-        '<div class="feedback-item' + (f.handled ? ' archived' : '') + '" data-id="' + f.id + '">' +
-          '<div class="feedback-item-head">' +
-            '<span class="feedback-category ' + f.category + '">' + f.category + '</span>' +
-            '<span class="feedback-date">' + date + '</span>' +
-            '<span class="feedback-ip">#' + f.id + ' · ' + escapeHtml(f.ip) + '</span>' +
-          '</div>' +
-          '<div class="feedback-message">' + escapeHtml(f.message) + '</div>' +
-          contact +
-          meta +
-          '<div class="feedback-actions">' +
-            '<button class="secondary btn-sm" onclick="archiveFeedback(' + f.id + ', ' + archiveAction + ')">' + archiveLabel + '</button>' +
-            '<button class="danger btn-sm" onclick="deleteFeedback(' + f.id + ')">Delete</button>' +
-          '</div>' +
+        '<div class="feedback-item' + (f.handled || f.dismissed ? ' archived' : '') + '" data-id="' + f.id + '">' +
+        '<div class="feedback-item-head">' +
+        '<span class="feedback-category ' + f.category + '">' + f.category + '</span>' +
+        statusBadge +
+        '<span class="feedback-date">' + date + '</span>' +
+        '<span class="feedback-ip">#' + f.id + ' · ' + escapeHtml(f.ip) + '</span>' +
+        '</div>' +
+        '<div class="feedback-message">' + escapeHtml(f.message) + '</div>' +
+        (userBadge ? '<div class="feedback-meta">' + userBadge + '</div>' : '') +
+        contact +
+        meta +
+        replyBlock +
+        '<div class="feedback-actions">' +
+        '<button class="secondary btn-sm" onclick="archiveFeedback(' + f.id + ', ' + archiveAction + ')">' + archiveLabel + '</button>' +
+        '<button class="btn-sm" onclick="replyFeedback(' + f.id + ')">Reply</button>' +
+        '<button class="secondary btn-sm" onclick="dismissFeedback(' + f.id + ')">Dismiss</button>' +
+        '<button class="danger btn-sm" onclick="deleteFeedback(' + f.id + ')">Delete</button>' +
+        '</div>' +
         '</div>';
     }
 
     async function archiveFeedback(id, handled) {
       await api('/feedback/' + id + '/handled', { method: 'PUT', body: JSON.stringify({ handled }) });
+      await loadFeedback();
+    }
+
+    async function replyFeedback(id) {
+      const reply = prompt('Reply to feedback #' + id + ':');
+      if (!reply || !reply.trim()) return;
+      const res = await api('/feedback/' + id + '/reply', { method: 'POST', body: JSON.stringify({ reply: reply.trim() }) });
+      if (!res.ok) { alert('Failed to send reply'); return; }
+      await loadFeedback();
+    }
+
+    async function dismissFeedback(id) {
+      if (!confirm('Dismiss feedback #' + id + ' (close without reply)?')) return;
+      const res = await api('/feedback/' + id + '/dismiss', { method: 'POST' });
+      if (!res.ok) { alert('Failed to dismiss'); return; }
       await loadFeedback();
     }
 
@@ -858,7 +1082,99 @@
       await loadFeedback();
     }
 
+    // --- Auth providers ---
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function loadAuthProviders() {
+      let data;
+      try {
+        const res = await api('/auth-providers');
+        data = await res.json();
+      } catch {
+        return;
+      }
+      const providers = data.providers || [];
+      const presets = data.presets || [];
+      window._authProviders = providers;
+      const available = presets.filter(p => !providers.some(x => x.id === p.id));
+      const el = document.getElementById('auth-providers');
+
+      let html = '';
+      if (providers.length === 0) {
+        html += '<p class="empty">No auth providers configured — user accounts are disabled.</p>';
+      } else {
+        html += providers.map(p => `
+          <div class="row">
+            <span class="label">${esc(p.name)}</span>
+            <span style="color:#94a3b8;font-size:0.7rem;font-family:monospace;overflow:hidden;text-overflow:ellipsis;">${esc(p.clientId)}</span>
+            <div style="margin-left: auto;" class="toggle ${p.enabled ? 'active' : ''}" title="Enabled" onclick="toggleAuthProvider('${esc(p.id)}')"></div>
+            <button class="secondary" onclick="editAuthProvider('${esc(p.id)}')">Edit</button>
+            <button class="danger" onclick="deleteAuthProvider('${esc(p.id)}')">Delete</button>
+          </div>
+        `).join('');
+      }
+
+      const addOptions = available.length
+        ? available.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')
+        : '<option value="" disabled>All presets configured</option>';
+      html += `
+        <div class="add-notice-form" style="margin-top:0.5rem;">
+          <div class="add-notice-row">
+            <select id="auth-add-id">${addOptions}</select>
+            <input type="text" id="auth-add-client-id" placeholder="Client ID" style="flex:1;min-width:0;">
+            <input type="password" id="auth-add-client-secret" placeholder="Client Secret" style="flex:1;min-width:0;">
+            <button onclick="addAuthProvider()" ${available.length ? '' : 'disabled'}>Add</button>
+          </div>
+          <p style="font-size:0.7rem;color:#64748b;margin:0.5rem 0 0;">Redirect URI to register at the provider: <code>${esc(window.location.origin)}/api/v1/auth/&lt;provider&gt;/callback</code> (uses <code>APP_URL</code>)</p>
+        </div>
+      `;
+      el.innerHTML = html;
+    }
+
+    async function addAuthProvider() {
+      const id = document.getElementById('auth-add-id').value;
+      const clientId = document.getElementById('auth-add-client-id').value.trim();
+      const clientSecret = document.getElementById('auth-add-client-secret').value;
+      if (!id || !clientId || !clientSecret) { alert('Fill in all fields'); return; }
+      const res = await api('/auth-providers', { method: 'POST', body: JSON.stringify({ id, clientId, clientSecret }) });
+      if (!res.ok && res.status !== 201) { alert('Failed to add provider'); return; }
+      await loadAuthProviders();
+    }
+
+    async function toggleAuthProvider(id) {
+      const p = (window._authProviders || []).find(x => x.id === id);
+      if (!p) return;
+      await api('/auth-providers/' + id, { method: 'PUT', body: JSON.stringify({ enabled: !p.enabled }) });
+      await loadAuthProviders();
+    }
+
+    async function editAuthProvider(id) {
+      const clientId = prompt('New Client ID for ' + id + ' (cancel to keep current):');
+      const clientSecret = prompt('New Client Secret for ' + id + ' (cancel to keep current):');
+      const body = {};
+      if (clientId !== null) body.clientId = clientId.trim();
+      if (clientSecret !== null) body.clientSecret = clientSecret;
+      if (Object.keys(body).length === 0) return;
+      const res = await api('/auth-providers/' + id, { method: 'PUT', body: JSON.stringify(body) });
+      if (!res.ok) { alert('Failed to update provider'); return; }
+      await loadAuthProviders();
+    }
+
+    async function deleteAuthProvider(id) {
+      if (!confirm('Remove the ' + id + ' provider configuration?')) return;
+      const res = await api('/auth-providers/' + id, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) { alert('Failed to delete provider'); return; }
+      await loadAuthProviders();
+    }
+
     loadSettings();
+    loadAuthProviders();
+    loadUsers();
+    loadSessions();
+    loadUserNotices();
     refresh();
     loadFeedback();
     setInterval(refresh, 5000);

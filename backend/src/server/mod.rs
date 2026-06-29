@@ -9,6 +9,7 @@ pub mod request;
 pub mod routes;
 
 use crate::{
+    admin, auth,
     cli::ServerConfig,
     database::Database,
     proto::{gbfs, gtfs_realtime, gtfs_schedule},
@@ -22,7 +23,15 @@ pub async fn run(server_config: &ServerConfig) -> anyhow::Result<()> {
         return Err(anyhow::anyhow!(e).context("Failed to initialize database"));
     }
 
-    crate::admin::init().await;
+    auth::config::init(server_config).await;
+    debug!(
+        auth_enabled = crate::auth::config::get().enabled(),
+        "Auth configured"
+    );
+
+    admin::init().await;
+
+    auth::session::spawn_expiry_reaper();
 
     gtfs_realtime::fetcher::spawn_feed_fetcher();
     gtfs_schedule::fetcher::spawn_schedule_fetcher();
@@ -30,7 +39,7 @@ pub async fn run(server_config: &ServerConfig) -> anyhow::Result<()> {
 
     info!("Waiting for initial schedule info and feed");
     {
-        let settings = crate::admin::ADMIN_SETTINGS.read().await;
+        let settings = admin::ADMIN_SETTINGS.read().await;
         let realtime_paused = settings.realtime_paused.unwrap_or(false);
         let static_paused = settings.static_paused.unwrap_or(false);
         drop(settings);
@@ -58,7 +67,7 @@ pub async fn run(server_config: &ServerConfig) -> anyhow::Result<()> {
         }
     }
 
-    crate::admin::run(server_config).await?;
+    admin::run(server_config).await?;
 
     let app = routes::create_router(server_config.ip_source.clone())
         .into_make_service_with_connect_info::<SocketAddr>();

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE auth_providers\n        SET client_id     = COALESCE(?, client_id),\n            client_secret = COALESCE(?, client_secret),\n            enabled       = COALESCE(?, enabled),\n            updated_at    = ?\n        WHERE id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "ce90e1089022746d0880c967f547bd985f41156ff1c4fee9b55cae8896f426d3"
+}

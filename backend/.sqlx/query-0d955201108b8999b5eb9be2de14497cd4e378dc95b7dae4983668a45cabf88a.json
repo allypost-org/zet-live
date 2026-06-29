@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id, user_id\n        FROM user_oauth_identities\n        WHERE provider = ? AND provider_subject = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_oauth_identities",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_oauth_identities",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "0d955201108b8999b5eb9be2de14497cd4e378dc95b7dae4983668a45cabf88a"
+}

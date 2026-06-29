@@ -37,6 +37,26 @@ pub fn create_admin_router(state: AdminState) -> Router {
         .route("/feedback", get(list_feedback).delete(delete_all_feedback))
         .route("/feedback/{id}", delete(delete_feedback))
         .route("/feedback/{id}/handled", put(mark_feedback_handled))
+        .route("/feedback/{id}/reply", post(reply_feedback))
+        .route("/feedback/{id}/dismiss", post(dismiss_feedback))
+        .route(
+            "/auth-providers",
+            get(get_auth_providers).post(create_auth_provider),
+        )
+        .route(
+            "/auth-providers/{id}",
+            put(update_auth_provider).delete(delete_auth_provider),
+        )
+        .route("/users", get(list_users))
+        .route("/users/{id}", delete(delete_user_account))
+        .route("/users/{id}/revoke-sessions", post(revoke_user_sessions))
+        .route("/sessions", get(list_sessions))
+        .route("/sessions/{id}", delete(delete_session))
+        .route(
+            "/user-notices",
+            get(list_user_notices).post(create_user_notice),
+        )
+        .route("/user-notices/{id}", delete(delete_user_notice))
         .layer(axum::middleware::from_fn_with_state(
             state.admin_key.clone(),
             auth_middleware,
@@ -192,6 +212,361 @@ async fn mark_feedback_handled(
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             warn!(error = %e, id, "Failed to update feedback handled flag");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ReplyRequest {
+    reply: String,
+}
+
+/// `POST /api/feedback/{id}/reply` -> admin replies (marks acknowledged).
+async fn reply_feedback(
+    Path(id): Path<i64>,
+    axum::Json(body): axum::Json<ReplyRequest>,
+) -> impl IntoResponse {
+    let reply = body.reply.trim();
+    if reply.is_empty() {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    match admin::feedback::reply(id, reply).await {
+        Ok(Some(row)) => (StatusCode::OK, axum::Json(row)).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, id, "Failed to reply to feedback");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `POST /api/feedback/{id}/dismiss` -> admin dismisses (closes without reply).
+async fn dismiss_feedback(Path(id): Path<i64>) -> impl IntoResponse {
+    match admin::feedback::dismiss(id).await {
+        Ok(Some(row)) => (StatusCode::OK, axum::Json(row)).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, id, "Failed to dismiss feedback");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+// --- Auth providers ---
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AuthProviderAdmin {
+    id: String,
+    name: String,
+    client_id: String,
+    enabled: bool,
+}
+
+/// `GET /api/auth-providers` -> configured providers (secret masked to a flag)
+/// and all known presets (for the "add" dropdown).
+async fn get_auth_providers() -> impl IntoResponse {
+    let presets = crate::auth::config::preset_list();
+
+    let configured: Vec<AuthProviderAdmin> = match sqlx::query!(
+        "
+        SELECT id            AS \"id!: String\",
+               client_id     AS \"client_id!: String\",
+               enabled       AS \"enabled!: i64\"
+        FROM auth_providers
+        ORDER BY id
+        "
+    )
+    .fetch_all(&crate::database::Database::pool())
+    .await
+    {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|r| AuthProviderAdmin {
+                name: presets
+                    .iter()
+                    .find(|p| p.id == r.id)
+                    .map_or_else(|| r.id.clone(), |p| p.name.clone()),
+                id: r.id,
+                client_id: r.client_id,
+                enabled: r.enabled != 0,
+            })
+            .collect(),
+        Err(e) => {
+            warn!(error = %e, "Failed to list auth providers");
+            vec![]
+        }
+    };
+
+    axum::Json(serde_json::json!({ "providers": configured, "presets": presets })).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateAuthProvider {
+    id: String,
+    client_id: String,
+    client_secret: String,
+    #[serde(default = "default_true")]
+    enabled: bool,
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+/// `POST /api/auth-providers` -> add (or replace) a provider's credentials.
+async fn create_auth_provider(axum::Json(body): axum::Json<CreateAuthProvider>) -> Response {
+    if !crate::auth::config::preset_exists(&body.id) {
+        return (StatusCode::BAD_REQUEST, "Unknown provider preset").into_response();
+    }
+    if body.enabled && !crate::auth::config::get().has_app_url() {
+        return (
+            StatusCode::BAD_REQUEST,
+            "APP_URL is not configured — set it before enabling an auth provider",
+        )
+            .into_response();
+    }
+    let now = jiff::Timestamp::now().to_string();
+    let enabled_i = i64::from(body.enabled);
+    match sqlx::query!(
+        "
+        INSERT INTO auth_providers
+            ( id
+            , client_id
+            , client_secret
+            , enabled
+            , created_at
+            , updated_at
+            )
+        VALUES
+            ( ?
+            , ?
+            , ?
+            , ?
+            , ?
+            , ?
+            )
+        ON CONFLICT(id) DO UPDATE SET
+              client_id     = excluded.client_id
+            , client_secret = excluded.client_secret
+            , enabled       = excluded.enabled
+            , updated_at    = excluded.updated_at
+        ",
+        body.id,
+        body.client_id,
+        body.client_secret,
+        enabled_i,
+        now,
+        now,
+    )
+    .execute(&crate::database::Database::pool())
+    .await
+    {
+        Ok(_) => {
+            crate::auth::config::reload().await;
+            StatusCode::CREATED.into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to create auth provider");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateAuthProvider {
+    #[serde(default)]
+    client_id: Option<String>,
+    #[serde(default)]
+    client_secret: Option<String>,
+    #[serde(default)]
+    enabled: Option<bool>,
+}
+
+/// `PUT /api/auth-providers/{id}` -> patch credentials / enabled flag.
+async fn update_auth_provider(
+    Path(id): Path<String>,
+    axum::Json(body): axum::Json<UpdateAuthProvider>,
+) -> Response {
+    if body.enabled == Some(true) && !crate::auth::config::get().has_app_url() {
+        return (
+            StatusCode::BAD_REQUEST,
+            "APP_URL is not configured — set it before enabling an auth provider",
+        )
+            .into_response();
+    }
+    let now = jiff::Timestamp::now().to_string();
+    let enabled_i = body.enabled.map(i64::from);
+    match sqlx::query!(
+        "
+        UPDATE auth_providers
+        SET client_id     = COALESCE(?, client_id),
+            client_secret = COALESCE(?, client_secret),
+            enabled       = COALESCE(?, enabled),
+            updated_at    = ?
+        WHERE id = ?
+        ",
+        body.client_id,
+        body.client_secret,
+        enabled_i,
+        now,
+        id,
+    )
+    .execute(&crate::database::Database::pool())
+    .await
+    {
+        Ok(res) if res.rows_affected() > 0 => {
+            crate::auth::config::reload().await;
+            StatusCode::OK.into_response()
+        }
+        Ok(_) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to update auth provider");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `DELETE /api/auth-providers/{id}` -> remove a provider's config.
+async fn delete_auth_provider(Path(id): Path<String>) -> Response {
+    match sqlx::query!("DELETE FROM auth_providers WHERE id = ?", id)
+        .execute(&crate::database::Database::pool())
+        .await
+    {
+        Ok(res) if res.rows_affected() > 0 => {
+            crate::auth::config::reload().await;
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(_) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to delete auth provider");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+// --- Users + per-account notices ---
+
+/// `GET /api/users` -> all accounts (id, name, email, linked providers).
+async fn list_users() -> impl IntoResponse {
+    match crate::auth::accounts::list_users().await {
+        Ok(users) => axum::Json(users).into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to list users");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `DELETE /api/users/{id}` -> permanently remove an account.
+async fn delete_user_account(Path(id): Path<String>) -> Response {
+    match crate::auth::accounts::delete_user(&id).await {
+        Ok(result) if result.deleted => {
+            for session_id in &result.session_ids {
+                crate::server::routes::v1::notify_session_revoked(&id, session_id);
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(_) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to delete user account");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `POST /api/users/{id}/revoke-sessions` -> revoke all of a user's sessions
+/// without deleting the account. Each revoked session's WS connection is
+/// notified so the client signs out immediately.
+async fn revoke_user_sessions(Path(id): Path<String>) -> Response {
+    match crate::auth::session::delete_other_sessions_for_user(&id, "").await {
+        Ok(ids) => {
+            for session_id in &ids {
+                crate::server::routes::v1::notify_session_revoked(&id, session_id);
+            }
+            axum::Json(serde_json::json!({ "revoked": ids.len() })).into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to revoke user sessions");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `GET /api/sessions` -> all sessions across all users.
+async fn list_sessions() -> impl IntoResponse {
+    match crate::auth::session::list_all_sessions().await {
+        Ok(sessions) => axum::Json(sessions).into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to list sessions");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `DELETE /api/sessions/{id}` -> force-expire a session and notify the affected
+/// WS connection.
+async fn delete_session(Path(id): Path<String>) -> Response {
+    match crate::auth::session::delete_session_by_id(&id).await {
+        Ok(Some(user_id)) => {
+            crate::server::routes::v1::notify_session_revoked(&user_id, &id);
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to delete session");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `GET /api/user-notices` -> all per-account notices (with target account).
+async fn list_user_notices() -> impl IntoResponse {
+    axum::Json(crate::admin::user_notices::list_all().await).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateUserNoticeRequest {
+    user_id: String,
+    text: String,
+    severity: crate::admin::settings::NoticeSeverity,
+}
+
+/// `POST /api/user-notices` -> create a per-account notice and push it.
+async fn create_user_notice(axum::Json(body): axum::Json<CreateUserNoticeRequest>) -> Response {
+    let text = body.text.trim();
+    if text.is_empty() {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    match crate::admin::user_notices::create(&body.user_id, text, body.severity).await {
+        Ok(_) => {
+            // Push the updated notice set to that account's connections.
+            let notices = crate::admin::user_notices::for_user(&body.user_id).await;
+            crate::server::routes::v1::send_user_notice(&body.user_id, &notices);
+            StatusCode::CREATED.into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to create user notice");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `DELETE /api/user-notices/{id}` -> delete a per-account notice and push update.
+async fn delete_user_notice(Path(id): Path<String>) -> Response {
+    match crate::admin::user_notices::delete(&id).await {
+        Ok(Some(user_id)) => {
+            let notices = crate::admin::user_notices::for_user(&user_id).await;
+            crate::server::routes::v1::send_user_notice(&user_id, &notices);
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to delete user notice");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

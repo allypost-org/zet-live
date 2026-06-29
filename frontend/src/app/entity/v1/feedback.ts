@@ -43,3 +43,17 @@ export const feedbackResponseSchema = z.object({
   ok: z.boolean(),
 });
 export type FeedbackResponse = z.infer<typeof feedbackResponseSchema>;
+
+export const myFeedbackItemSchema = z.object({
+  id: z.number(),
+  category: z.string(),
+  message: z.string(),
+  createdAt: z.string(),
+  status: z.enum(["open", "acknowledged", "dismissed", "replied"]),
+  reply: z.string().nullable(),
+});
+export type MyFeedbackItem = z.infer<typeof myFeedbackItemSchema>;
+
+export const myFeedbackResponseSchema = z.object({
+  items: z.array(myFeedbackItemSchema),
+});

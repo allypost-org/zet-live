@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT status, created_at FROM data_deletion_requests WHERE confirmation_code = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "status",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "data_deletion_requests",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "created_at",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "data_deletion_requests",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "0a0255684e85449a753294e54d78be15d281a158c8f262d1b24d8b1a4a8b9466"
+}

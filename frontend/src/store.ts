@@ -76,6 +76,7 @@ export type StoreState = {
   searchMatchedStopIds: Set<string> | null;
 
   globalNotices: GlobalNotice[] | null;
+  userNotices: GlobalNotice[] | null;
 
   selectVehicle: (id: string, tripId: string, flyTo?: boolean) => void;
   selectStop: (ids: string[]) => void;
@@ -150,6 +151,7 @@ export const useStore = create<StoreState>()(
     searchMatchedStopIds: null,
 
     globalNotices: null,
+    userNotices: null,
 
     selectVehicle: (id, tripId, flyTo = false) => {
       set({

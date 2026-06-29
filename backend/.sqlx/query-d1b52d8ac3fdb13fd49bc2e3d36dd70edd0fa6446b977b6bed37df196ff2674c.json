@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO feedback\n            ( category\n            , message\n            , name\n            , contact\n            , meta_url\n            , meta_ua\n            , meta_lang\n            , meta_build\n            , ip\n            , created_at\n            , user_id\n            )\n        VALUES\n            ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "d1b52d8ac3fdb13fd49bc2e3d36dd70edd0fa6446b977b6bed37df196ff2674c"
+}

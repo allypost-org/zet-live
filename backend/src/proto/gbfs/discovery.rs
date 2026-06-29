@@ -1,6 +1,6 @@
 //! GBFS auto-discovery (`gbfs.json`) resolver.
 //!
-//! Fetches the discovery document once, caches the `{feed_name → url}` map for
+//! Fetches the discovery document once, caches the `{feed_name -> url}` map for
 //! the configured language, and resolves individual feed URLs on demand. The
 //! cache is shared across all per-feed fetchers so `gbfs.json` is only fetched
 //! once (lazily, single-flighted) regardless of how many feeds are polled.
@@ -35,7 +35,7 @@ struct DiscoveredFeed {
 static MAP: LazyLock<RwLock<Option<HashMap<String, Url>>>> = LazyLock::new(|| RwLock::new(None));
 static LOAD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-/// Drop the cached `{feed_name → url}` map so the next [`resolve_feed_url`]
+/// Drop the cached `{feed_name -> url}` map so the next [`resolve_feed_url`]
 /// call re-fetches `gbfs.json`. Used when the admin changes `gbfs_url`.
 pub async fn invalidate() {
     *MAP.write().await = None;

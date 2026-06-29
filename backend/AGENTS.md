@@ -64,6 +64,14 @@ Loaded by `dotenvy::dotenv()` (in `main.rs`) and by the backend justfile
 - `GBFS_FETCH_ENDPOINT`, `GBFS_LANGUAGE`, `GBFS_MIN_FETCH_INTERVAL` — bike-share.
 - `ADMIN_KEY` + `ADMIN_BIND_TO` — **both** required to start the admin API.
 - `BIND_TO` (default `0.0.0.0:9011`), `IP_SOURCE`.
+- `APP_URL` — **required iff any auth provider is enabled** (used to build
+  OAuth redirect URIs). If unset, user accounts are disabled entirely and the
+  binary still boots. The admin API refuses to enable a provider while it's
+  unset (returns 400).
+- `ALLOWED_FRONTEND_ORIGINS` — comma-separated extra origins allowed as the
+  OAuth popup `postMessage` target (for split-origin dev). `APP_URL`'s origin
+  is always allowed automatically.
+- `SESSION_MAX_AGE_SECS` — session token lifetime (default 2_592_000 = 30d).
 
 ## Architecture
 

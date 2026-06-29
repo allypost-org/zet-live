@@ -30,6 +30,8 @@ pub struct ToastPayload {
     pub target: NotificationTarget,
     #[serde(default)]
     pub ips: Vec<IpAddr>,
+    #[serde(default)]
+    pub account: Option<String>,
 }
 
 const fn default_toast_type() -> ToastType {
@@ -55,6 +57,7 @@ pub enum ToastType {
 pub enum NotificationTarget {
     All,
     Ips,
+    Account,
 }
 
 pub enum AdminNotification {
@@ -62,6 +65,12 @@ pub enum AdminNotification {
         bytes: Vec<u8>,
         target: NotificationTarget,
         ips: Vec<IpAddr>,
+        account: Option<String>,
+    },
+    SessionRevoked {
+        text: String,
+        user_id: String,
+        session_id: String,
     },
 }
 
@@ -76,6 +85,7 @@ pub async fn send_notification(payload: ToastPayload) {
         bytes,
         target: payload.target,
         ips: payload.ips,
+        account: payload.account,
     });
 
     let receiver_count = ADMIN_NOTIFICATION_TX.send(notification).unwrap_or(0);

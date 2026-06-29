@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id            AS \"id!: String\",\n               client_id     AS \"client_id!: String\",\n               enabled       AS \"enabled!: i64\"\n        FROM auth_providers\n        ORDER BY id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "auth_providers",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "client_id!: String",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "auth_providers",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "name": "enabled!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "auth_providers",
+            "name": "enabled"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6d7c96d2750af4e5d95ef518ac1ca55e817ad40b1a404df50b29950602aed759"
+}

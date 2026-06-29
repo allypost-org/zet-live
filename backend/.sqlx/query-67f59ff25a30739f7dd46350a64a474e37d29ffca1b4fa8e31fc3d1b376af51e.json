@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM link_tickets WHERE expires_at < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "67f59ff25a30739f7dd46350a64a474e37d29ffca1b4fa8e31fc3d1b376af51e"
+}

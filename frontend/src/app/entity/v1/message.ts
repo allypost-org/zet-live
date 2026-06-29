@@ -27,6 +27,11 @@ export const v1MessageSchema = versionedSchema(
     )
     .or(
       z.object({
+        userNotices: z.array(noticeSchema),
+      }),
+    )
+    .or(
+      z.object({
         toast: z.object({
           message: z.string(),
           type: z.enum(["info", "success", "warning", "error"]),

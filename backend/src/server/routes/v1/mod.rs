@@ -12,7 +12,8 @@ use _entity::{gbfs::GbfsStation, vehicle::Vehicle};
 use axum::{
     Router,
     body::Bytes,
-    routing::{get, post},
+    extract::DefaultBodyLimit,
+    routing::{delete, get, post},
 };
 use sqlx::AssertSqlSafe;
 use tokio::sync::{RwLock, watch};
@@ -34,10 +35,13 @@ use crate::{
 mod _entity;
 pub mod admin_notifications;
 mod app;
+pub mod auth;
+mod capabilities;
 mod feed;
 mod feedback;
 mod gbfs;
 mod schedule;
+mod settings;
 mod vehicles;
 pub mod ws;
 
@@ -54,6 +58,33 @@ pub fn create_v1_router() -> Router {
         .route("/feed", get(feed::get_feed))
         .route("/ws", get(ws::websocket_handler))
         .route("/gbfs/stations", get(gbfs::get_stations))
+        .route("/capabilities", get(capabilities::get_capabilities))
+        .route("/auth/{provider}/start", get(auth::start))
+        // NOTE: `/auth/{provider}/callback` is registered in
+        // `routes::create_router` with a longer (30 s) timeout, since it makes
+        // two sequential outbound HTTPS calls to the provider.
+        .route("/auth/logout", post(auth::logout))
+        .route("/auth/link-ticket", post(auth::link_ticket))
+        .route("/auth/transfer", post(auth::transfer))
+        .route("/auth/me", get(auth::me))
+        .route("/auth/sessions", get(auth::list_sessions))
+        .route("/auth/sessions/revoke-all", post(auth::revoke_all_sessions))
+        .route("/auth/sessions/{id}", delete(auth::delete_session))
+        .route("/auth/identities/{provider}", delete(auth::unlink))
+        .route("/auth/account", delete(auth::delete_account))
+        .route("/auth/facebook/deletion", post(auth::facebook_deletion))
+        .route(
+            "/auth/facebook/deletion/status/{code}",
+            get(auth::facebook_deletion_status),
+        )
+        .route(
+            "/settings",
+            get(settings::get_settings)
+                .put(settings::put_settings)
+                // Settings are a handful of booleans/short strings; cap well
+                // below axum's 2 MB default to prevent DB bloat (2 MB × N users).
+                .layer(DefaultBodyLimit::max(64 * 1024)),
+        )
         .route("/schedule/routes", get(schedule::get_routes))
         .route("/schedule/routes/{id}", get(schedule::get_route))
         .route("/schedule/stops", get(schedule::get_stops))
@@ -73,23 +104,64 @@ pub fn create_v1_router() -> Router {
             get(schedule::get_trip_info),
         )
         .route("/feedback", post(feedback::submit))
+        .route("/feedback/mine", get(feedback::mine))
         .with_state(app_state)
 }
 
+type InitialStateData = prost::bytes::Bytes;
+type InitialStateEntry = RwLock<InitialStateData>;
 pub struct InitialState {
-    vehicles: Vec<u8>,
-    active_stops: Vec<u8>,
-    notices: Vec<u8>,
-    gbfs_stations: Vec<u8>,
+    vehicles: InitialStateEntry,
+    active_stops: InitialStateEntry,
+    notices: InitialStateEntry,
+    gbfs_stations: InitialStateEntry,
 }
-pub static INITIAL_STATE: LazyLock<RwLock<InitialState>> = LazyLock::new(|| {
-    RwLock::new(InitialState {
-        vehicles: Vec::new(),
-        active_stops: Vec::new(),
-        notices: Vec::new(),
-        gbfs_stations: Vec::new(),
-    })
-});
+#[allow(dead_code)]
+impl InitialState {
+    pub fn new() -> Self {
+        Self {
+            vehicles: RwLock::new(Bytes::new()),
+            active_stops: RwLock::new(Bytes::new()),
+            notices: RwLock::new(Bytes::new()),
+            gbfs_stations: RwLock::new(Bytes::new()),
+        }
+    }
+
+    pub async fn vehicles(&self) -> tokio::sync::RwLockReadGuard<'_, InitialStateData> {
+        self.vehicles.read().await
+    }
+
+    pub async fn update_vehicles(&self, vehicles: InitialStateData) {
+        *self.vehicles.write().await = vehicles;
+    }
+
+    pub async fn active_stops(&self) -> tokio::sync::RwLockReadGuard<'_, InitialStateData> {
+        self.active_stops.read().await
+    }
+
+    pub async fn update_active_stops(&self, active_stops: InitialStateData) {
+        *self.active_stops.write().await = active_stops;
+    }
+
+    pub async fn notices(&self) -> tokio::sync::RwLockReadGuard<'_, InitialStateData> {
+        self.notices.read().await
+    }
+
+    pub async fn update_notices(&self, notices: InitialStateData) {
+        *self.notices.write().await = notices;
+    }
+
+    pub async fn gbfs_stations(&self) -> tokio::sync::RwLockReadGuard<'_, InitialStateData> {
+        self.gbfs_stations.read().await
+    }
+
+    pub async fn update_gbfs_stations(&self, gbfs_stations: InitialStateData) {
+        *self.gbfs_stations.write().await = gbfs_stations;
+    }
+}
+
+pub static INITIAL_STATE: LazyLock<Arc<InitialState>> =
+    LazyLock::new(|| Arc::new(InitialState::new()));
 
 static V1_APP_STATE: OnceLock<Arc<V1AppState>> = OnceLock::new();
 
@@ -103,14 +175,18 @@ pub async fn broadcast_notices(notices: &[GlobalNotice]) {
         return;
     };
 
-    INITIAL_STATE.write().await.notices = if notices.is_empty() {
-        Vec::new()
-    } else {
-        bytes.clone()
-    };
+    let bytes = Bytes::from(bytes);
+
+    INITIAL_STATE
+        .update_notices(if notices.is_empty() {
+            Bytes::new()
+        } else {
+            bytes.clone()
+        })
+        .await;
 
     if let Some(state) = V1_APP_STATE.get() {
-        state.send_transmission(Transmission::BroadcastToAll(Bytes::from(bytes)));
+        state.send_transmission(Transmission::BroadcastToAll(bytes));
     }
 }
 
@@ -125,10 +201,6 @@ async fn feed_listener(app_state: Arc<V1AppState>) {
     }
 }
 
-/// Listens for GBFS feed changes and rebroadcasts a station snapshot over
-/// WebSocket. The database is re-read on every wake so the snapshot is always
-/// eventually consistent, even if a notify lands while a broadcast is in
-/// flight.
 async fn gbfs_listener(app_state: Arc<V1AppState>) {
     broadcast_gbfs_snapshot(&app_state).await;
     loop {
@@ -138,8 +210,6 @@ async fn gbfs_listener(app_state: Arc<V1AppState>) {
     }
 }
 
-/// Read the GBFS station tables, build compact tuples, persist them to
-/// [`INITIAL_STATE`], and broadcast to every connected WebSocket client.
 async fn broadcast_gbfs_snapshot(app_state: &Arc<V1AppState>) {
     let stations = match fetch_gbfs_stations().await {
         Ok(stations) => stations,
@@ -175,16 +245,15 @@ async fn broadcast_gbfs_snapshot(app_state: &Arc<V1AppState>) {
         return;
     }
 
-    INITIAL_STATE
-        .write()
-        .await
-        .gbfs_stations
-        .clone_from(&stations_bytes);
+    let stations_bytes = Bytes::from(stations_bytes);
 
-    app_state.send_transmission(Transmission::BroadcastToAll(Bytes::from(stations_bytes)));
+    INITIAL_STATE
+        .update_gbfs_stations(stations_bytes.clone())
+        .await;
+
+    app_state.send_transmission(Transmission::BroadcastToAll(stations_bytes));
 }
 
-/// Fetch all GBFS stations joined with their realtime status, newest first.
 pub async fn fetch_gbfs_stations() -> Result<Vec<GbfsStation>, sqlx::Error> {
     let rows = sqlx::query!(
         "
@@ -225,9 +294,6 @@ pub async fn fetch_gbfs_stations() -> Result<Vec<GbfsStation>, sqlx::Error> {
 pub static SIMPLE_STOPS: LazyLock<RwLock<Vec<Vec<MixedValue>>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 
-/// Hash of the last GBFS snapshot that was actually broadcast. Used to skip
-/// re-broadcasting byte-identical snapshots when an unrelated GBFS feed
-/// (e.g. `system_hours`) writes and fires the change notification.
 static LAST_GBFS_HASH: AtomicU64 = AtomicU64::new(0);
 
 #[allow(clippy::too_many_lines)]
@@ -378,14 +444,13 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             }
         };
 
-        INITIAL_STATE
-            .write()
-            .await
-            .active_stops
-            .clone_from(&active_stops);
+        let active_stops = Bytes::from(active_stops);
 
-        active_stops_app_state
-            .send_transmission(Transmission::BroadcastToAll(Bytes::from(active_stops)));
+        INITIAL_STATE
+            .update_active_stops(active_stops.clone())
+            .await;
+
+        active_stops_app_state.send_transmission(Transmission::BroadcastToAll(active_stops));
     });
 
     let vehicles_feed = feed;
@@ -887,9 +952,11 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             }
         };
 
-        INITIAL_STATE.write().await.vehicles.clone_from(&vehicles);
+        let vehicles = Bytes::from(vehicles);
 
-        vehicles_app_state.send_transmission(Transmission::BroadcastToAll(Bytes::from(vehicles)));
+        INITIAL_STATE.update_vehicles(vehicles.clone()).await;
+
+        vehicles_app_state.send_transmission(Transmission::BroadcastToAll(vehicles));
     });
 }
 
@@ -928,6 +995,8 @@ pub enum Broadcast {
     Vehicles(Vec<Vec<MixedValue>>),
     ActiveStops(Vec<String>),
     Notices(Vec<GlobalNotice>),
+    /// Per-account notices (full replacement of that account's notice set).
+    UserNotices(Vec<GlobalNotice>),
     Toast(ToastData),
     GbfsStations(Vec<Vec<MixedValue>>),
 }
@@ -945,6 +1014,44 @@ pub struct ToastData {
 pub enum Transmission {
     Empty,
     BroadcastToAll(Bytes),
+    /// Per-account notice(s) for `user_id` (broadcast to all connection tasks,
+    /// each filters by its own user). `bytes` is a serialized `Broadcast::UserNotices`.
+    UserNotice {
+        user_id: String,
+        bytes: Bytes,
+    },
+}
+
+/// Push a per-account notice update to a single account's connections.
+pub fn send_user_notice(user_id: &str, notices: &[GlobalNotice]) {
+    let versioned = Versioned::new(1, Broadcast::UserNotices(notices.to_vec()));
+    let Ok(bytes) = minicbor_serde::to_vec(&versioned) else {
+        return;
+    };
+    if let Some(state) = V1_APP_STATE.get() {
+        state.send_transmission(Transmission::UserNotice {
+            user_id: user_id.to_string(),
+            bytes: Bytes::from(bytes),
+        });
+    }
+}
+
+/// Notify a specific session's WS connection that it was force-expired/revoked.
+/// Only the connection whose `session_id` matches receives the message. Sent as
+/// a JSON text frame (not CBOR binary) so it bypasses the worker's CBOR
+/// pipeline and is handled directly by the main-thread WS handler.
+pub fn notify_session_revoked(user_id: &str, session_id: &str) {
+    let text = r#"{"v":1,"d":{"sessionRevoked":true}}"#.to_string();
+
+    admin_notifications::ADMIN_NOTIFICATION_TX
+        .send(std::sync::Arc::new(
+            admin_notifications::AdminNotification::SessionRevoked {
+                text,
+                user_id: user_id.to_string(),
+                session_id: session_id.to_string(),
+            },
+        ))
+        .ok();
 }
 
 fn haversine_distance(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {

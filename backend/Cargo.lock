@@ -116,6 +116,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "arc-swap"
+version = "1.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "async-compression"
 version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -261,6 +270,7 @@ dependencies = [
  "axum",
  "axum-core",
  "bytes",
+ "cookie",
  "form_urlencoded",
  "futures-core",
  "futures-util",
@@ -639,6 +649,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "const-oid"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -969,6 +985,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer 0.12.0",
+ "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
 ]
@@ -4641,17 +4658,21 @@ version = "0.2.1"
 dependencies = [
  "accept-header",
  "anyhow",
+ "arc-swap",
  "async-trait",
  "axum",
  "axum-client-ip",
  "axum-extra",
+ "base64",
  "build-info",
  "build-info-build",
  "clap",
  "clap_complete",
+ "cookie",
  "csv",
  "dotenvy",
  "futures",
+ "hmac",
  "include_dir",
  "jiff",
  "listenfd",
@@ -4665,6 +4686,7 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "serde_with",
+ "sha2 0.11.0",
  "signal-hook",
  "sqlx",
  "thiserror",

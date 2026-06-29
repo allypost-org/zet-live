@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM pending_transfers\n        WHERE token_hash = ? AND expires_at > ? AND target_user_id = ?\n        RETURNING provider, provider_subject, source_user_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_transfers",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "provider_subject",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_transfers",
+            "name": "provider_subject"
+          }
+        }
+      },
+      {
+        "name": "source_user_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_transfers",
+            "name": "source_user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5624c599dc606cc10285d2e5b24fd0269772a54753a00f5f597359494c6bd2d5"
+}

@@ -242,7 +242,7 @@ export function SearchBar() {
   return (
     <div
       ref={containerRef}
-      className="bg-surface-overlay pointer-events-auto overflow-hidden rounded-xl shadow-md backdrop-blur-sm"
+      className="bg-surface-overlay pointer-events-auto w-full max-w-md overflow-hidden rounded-xl shadow-md backdrop-blur-sm"
     >
       <div className="flex items-center gap-2 px-3 py-2">
         <svg

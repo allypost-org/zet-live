@@ -7,10 +7,16 @@ import {
   FEEDBACK_MAX_NAME_LEN,
   feedbackPayloadSchema,
   type FeedbackCategory,
+  myFeedbackResponseSchema,
+  type MyFeedbackItem,
 } from "@/app/entity/v1/feedback";
 import { useFeedbackSubmit } from "@/hooks/use-feedback";
 import { closeFeedback, openFeedback, useFeedbackOpen } from "@/feedback-store";
+import { useAuthStatus } from "@/auth-store";
+import { API_URL } from "@/app/consts";
+import { apiFetch } from "@/app/entity/v1/api";
 import { cn } from "@/utils/style";
+import { appQueueMicrotask } from "@/utils/polyfill/requestSomeCallback";
 
 type FieldErrors = {
   category?: string;
@@ -31,9 +37,26 @@ export function FeedbackModal() {
   const [honeypot, setHoneypot] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [myItems, setMyItems] = useState<MyFeedbackItem[]>([]);
 
   const submit = useFeedbackSubmit();
   const firstInputRef = useRef<HTMLTextAreaElement>(null);
+  const authStatus = useAuthStatus();
+
+  // Fetch the user's feedback history when the modal opens (authenticated).
+  useEffect(() => {
+    if (!open || authStatus !== "authenticated") return;
+    let cancelled = false;
+    void (async () => {
+      const res = await apiFetch(`${API_URL}/v1/feedback/mine`, myFeedbackResponseSchema);
+      if (!cancelled && res.data) {
+        setMyItems(res.data.items);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, authStatus]);
 
   useEffect(() => {
     if (!open) return;
@@ -45,7 +68,7 @@ export function FeedbackModal() {
     }
 
     document.addEventListener("keydown", handleKeyDown);
-    queueMicrotask(() => {
+    appQueueMicrotask(() => {
       firstInputRef.current?.focus();
     });
     return () => {
@@ -110,6 +133,11 @@ export function FeedbackModal() {
       });
       if (ok) {
         resetForm();
+        // Refetch history if authenticated.
+        if (authStatus === "authenticated") {
+          const res = await apiFetch(`${API_URL}/v1/feedback/mine`, myFeedbackResponseSchema);
+          if (res.data) setMyItems(res.data.items);
+        }
       }
     } finally {
       setSubmitting(false);
@@ -171,6 +199,19 @@ export function FeedbackModal() {
                 </svg>
               </button>
             </div>
+
+            {authStatus === "authenticated" && myItems.length > 0 ? (
+              <section className="flex flex-col gap-2 px-5 pt-3">
+                <h3 className="text-on-surface-muted text-xs font-semibold tracking-wide uppercase">
+                  Your submissions
+                </h3>
+                <div className="flex flex-col gap-2">
+                  {myItems.map((item) => (
+                    <FeedbackHistoryItem key={item.id} item={item} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             <form
               className="flex flex-col gap-4 px-5 pb-5"
@@ -362,5 +403,47 @@ export function FeedbackButton() {
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </svg>
     </button>
+  );
+}
+
+function FeedbackHistoryItem({ item }: { item: MyFeedbackItem }) {
+  const date = new Date(item.createdAt).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const statusStyles: Record<string, string> = {
+    open: "bg-primary-container text-on-primary-container",
+    acknowledged: "bg-primary-container text-on-primary-container",
+    replied: "bg-success-container text-on-success-container",
+    dismissed: "bg-surface-hover text-on-surface-faint",
+  };
+
+  return (
+    <div className="border-outline bg-surface-dim flex flex-col gap-1.5 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-on-surface-muted text-xs font-semibold uppercase">
+          {item.category}
+        </span>
+        <span
+          className={cn(
+            "rounded px-1.5 py-0.5 text-[0.65rem] font-bold uppercase",
+            statusStyles[item.status] ?? statusStyles.open,
+          )}
+        >
+          {item.status}
+        </span>
+        <span className="text-on-surface-faint ml-auto text-xs">{date}</span>
+      </div>
+      <p className="text-on-surface text-sm">{item.message}</p>
+      {item.reply ? (
+        <div className="border-outline mt-1 border-l-2 pl-2 text-sm">
+          <span className="text-on-surface-muted text-xs font-semibold uppercase">Reply</span>
+          <p className="text-on-surface">{item.reply}</p>
+        </div>
+      ) : null}
+    </div>
   );
 }

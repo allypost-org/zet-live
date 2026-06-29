@@ -4,8 +4,8 @@ import type { VehicleV1 } from "@/app/entity/v1/vehicle";
 import type { TripStopTimeEntry } from "@/app/trip-stop-times";
 import { buildArrivalTimeLookup, lookupStopArrivalTime } from "@/app/trip-stop-times";
 import {
-  requestIdleCallback,
-  requestAnimationFrame,
+  appRequestIdleCallback,
+  appRequestAnimationFrame,
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
 import { formatMinutesFromNow } from "@/utils/time";
@@ -60,8 +60,8 @@ export function VehicleSheet({
   }, [displayedStops, nextStopIndex, tripStopTimes, vehicle.nextStopArrivalTime]);
 
   useEffect(() => {
-    let timeout = requestIdleCallback(() => {
-      timeout = requestAnimationFrame(() => {
+    let timeout = appRequestIdleCallback(() => {
+      timeout = appRequestAnimationFrame(() => {
         const $el = document.querySelector<HTMLElement>(
           `.bottom-vehicle-stop-list [data-is-next="true"]`,
         );

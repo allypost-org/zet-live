@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM oauth_states\n        WHERE state = ? AND expires_at > ?\n        RETURNING provider, pkce_verifier, link, origin, user_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_states",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "pkce_verifier",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_states",
+            "name": "pkce_verifier"
+          }
+        }
+      },
+      {
+        "name": "link",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "oauth_states",
+            "name": "link"
+          }
+        }
+      },
+      {
+        "name": "origin",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_states",
+            "name": "origin"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_states",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "1ec00439bd6fa93948c0835d7bfb135ec2c43174461196e5e73a5164e53a0f13"
+}

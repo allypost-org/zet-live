@@ -1,4 +1,5 @@
 import { isErr, try$ } from "@allynet/ishod";
+import { sessionToken } from "@/auth-store";
 import { z } from "zod";
 
 const stopTimeSchema = z.object({
@@ -78,7 +79,15 @@ export async function apiFetch<T>(
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   options?: RequestInit,
 ): Promise<ApiResponse<T>> {
-  const resp = await try$(fetch(url, options));
+  const headers = new Headers(options?.headers);
+  const token = sessionToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (options?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const resp = await try$(fetch(url, { ...options, headers }));
   if (isErr(resp)) {
     return {
       data: null,

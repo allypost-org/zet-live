@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM link_tickets\n        WHERE token_hash = ? AND expires_at > ?\n        RETURNING user_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "link_tickets",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b78b12cd8ba9abe0d6daa952fcf64ccb94e478c8ea5a046f0b8e546d6a5bc6f1"
+}

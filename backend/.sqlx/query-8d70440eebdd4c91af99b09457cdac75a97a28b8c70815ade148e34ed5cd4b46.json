@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM user_notices WHERE id = ? RETURNING user_id AS \"user_id!: String\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id!: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_notices",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8d70440eebdd4c91af99b09457cdac75a97a28b8c70815ade148e34ed5cd4b46"
+}

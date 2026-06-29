@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import {
   getSharedWorker,
   postWorkerMessage,
@@ -10,8 +10,16 @@ import { API_URL } from "@/app/consts";
 import { processMessage, handleStopsUpdate } from "./use-stops";
 import { useStore } from "@/store";
 import { toast } from "sonner";
+import { authStore, sessionToken, clearAuth } from "@/auth-store";
+
+function sendAuthMessage(ws: WebSocket, token: string | null) {
+  ws.send(JSON.stringify({ v: 1, t: "auth", d: token }));
+}
 
 export function useWebSocket() {
+  const token = authStore((s) => s.token);
+  const wsRef = useRef<WebSocket | null>(null);
+
   useEffect(() => {
     const worker = getSharedWorker();
 
@@ -22,6 +30,12 @@ export function useWebSocket() {
           const data = response.data.d;
           if (typeof data === "object" && "notices" in data) {
             useStore.setState({ globalNotices: data.notices.length > 0 ? data.notices : null });
+            return;
+          }
+          if (typeof data === "object" && "userNotices" in data) {
+            useStore.setState({
+              userNotices: data.userNotices.length > 0 ? data.userNotices : null,
+            });
             return;
           }
           if (typeof data === "object" && "toast" in data) {
@@ -53,16 +67,6 @@ export function useWebSocket() {
     };
   }, []);
 
-  const websocketUrl = (() => {
-    const url = new URL(`${API_URL}/v1/ws`, window.location.href);
-    if (url.protocol === "https:") {
-      url.protocol = "wss:";
-    } else {
-      url.protocol = "ws:";
-    }
-    return url.toString();
-  })();
-
   const sendToWorker = useCallback((data: Blob) => {
     const worker = getSharedWorker();
     postWorkerMessage(worker, data);
@@ -74,19 +78,31 @@ export function useWebSocket() {
     const { signal } = abortController;
 
     async function connectWebSocket() {
+      if (signal.aborted) return null;
+
+      const url = new URL(`${API_URL}/v1/ws`, window.location.href);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+
+      console.log("Connecting to WebSocket", url.pathname);
+      const ws = new WebSocket(url.toString());
+      wsRef.current = ws;
+
       return new Promise<null>((resolve) => {
-        if (signal.aborted) {
-          resolve(null);
-          return;
-        }
-
-        console.log("Connecting to WebSocket", websocketUrl);
-        const ws = new WebSocket(websocketUrl);
-
         const onAbort = () => {
           ws.close();
         };
         signal.addEventListener("abort", onAbort, { once: true });
+
+        ws.addEventListener(
+          "open",
+          (e) => {
+            console.log("WebSocket opened", e);
+            useStore.setState({ wsConnected: true, lastError: null });
+            const tok = sessionToken();
+            if (tok) sendAuthMessage(ws, tok);
+          },
+          { signal },
+        );
 
         ws.addEventListener(
           "error",
@@ -110,19 +126,22 @@ export function useWebSocket() {
         );
 
         ws.addEventListener(
-          "open",
-          (e) => {
-            console.log("WebSocket opened", e);
-            useStore.setState({ wsConnected: true, lastError: null });
-          },
-          { signal },
-        );
-
-        ws.addEventListener(
           "message",
           (e) => {
-            console.log("Got data", { len: (e.data as Blob).size });
-            sendToWorker(e.data as Blob);
+            if (typeof e.data === "string") {
+              try {
+                const msg = JSON.parse(e.data) as { d?: unknown };
+                if (msg.d && typeof msg.d === "object" && "sessionRevoked" in msg.d) {
+                  clearAuth();
+                  toast.info("Your session has been revoked");
+                }
+              } catch {
+                /* ignore malformed text */
+              }
+            } else {
+              console.log("Got data", { len: (e.data as Blob).size });
+              sendToWorker(e.data as Blob);
+            }
           },
           { signal },
         );
@@ -152,8 +171,15 @@ export function useWebSocket() {
 
     return () => {
       abortController.abort();
+      wsRef.current = null;
     };
-  }, [websocketUrl, sendToWorker]);
+  }, [sendToWorker]);
+
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    sendAuthMessage(ws, token);
+  }, [token]);
 
   return { sendToWorker };
 }
