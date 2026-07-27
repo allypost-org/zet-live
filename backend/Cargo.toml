@@ -29,6 +29,7 @@ serde_json = { version = "1.0.150", features = ["alloc"] }
 serde_repr = "0.1.20"
 signal-hook = "0.4.4"
 thiserror = "2.0.18"
+tikv-jemallocator = "0.7.0"
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-util = "0.7.18"
 tower = "0.5.3"

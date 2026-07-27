@@ -3,6 +3,9 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::config::project::ProjectConfig;
 
+#[global_allocator]
+static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 mod admin;
 mod auth;
 mod cli;
