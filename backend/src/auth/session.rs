@@ -35,7 +35,7 @@ fn now_db() -> time::OffsetDateTime {
 
 fn expires_db(max_age: Duration) -> time::OffsetDateTime {
     time::OffsetDateTime::now_utc()
-        .saturating_add(time::Duration::seconds(max_age.as_secs() as i64))
+        .saturating_add(time::Duration::seconds(max_age.as_secs().cast_signed()))
 }
 
 fn decode_token(token: &str) -> Option<Vec<u8>> {
