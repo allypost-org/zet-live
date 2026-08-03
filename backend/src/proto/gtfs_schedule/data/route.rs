@@ -3,9 +3,6 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use super::FileData;
-use crate::proto::gtfs_schedule::data::BulkInsert;
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Route {
@@ -50,20 +47,6 @@ impl Route {
 
     pub fn default_route_text_color() -> String {
         "000000".to_string()
-    }
-}
-
-impl FileData for Route {
-    fn file_name() -> &'static str {
-        "routes.txt"
-    }
-
-    fn table_name() -> &'static str {
-        "gtfs_routes"
-    }
-
-    fn into_bulk_insert(self) -> BulkInsert {
-        BulkInsert::Route(self)
     }
 }
 

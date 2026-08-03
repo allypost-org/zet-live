@@ -3,9 +3,6 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use super::FileData;
-use crate::proto::gtfs_schedule::data::BulkInsert;
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Stop {
@@ -47,20 +44,6 @@ pub struct Stop {
     #[serde(default)]
     #[sqlx(skip)]
     pub trip_ids_stop_here: Vec<String>,
-}
-
-impl FileData for Stop {
-    fn file_name() -> &'static str {
-        "stops.txt"
-    }
-
-    fn table_name() -> &'static str {
-        "gtfs_stops"
-    }
-
-    fn into_bulk_insert(self) -> BulkInsert {
-        BulkInsert::Stop(self)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
