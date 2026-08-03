@@ -9,7 +9,7 @@ use tracing::error;
 use crate::{
     database::Database,
     entity::util::versioned::Versioned,
-    proto::gtfs_schedule::data::{Route, Shape, SimpleStop, Trip},
+    proto::gtfs_schedule::data::{Route, Shape, SimpleStop, Trip, trip_key},
     server::{error::ApiError, request::JsonOrAccept},
 };
 
@@ -679,9 +679,27 @@ async fn fetch_live_trip_data(trip_id: &str, pool: &PgPool) -> Result<LiveTripDa
 pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> impl IntoResponse {
     let pool = Database::pool();
 
+    let canonical = match resolve_static_trip_id(&trip_key(&trip_id), &pool).await {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            return match build_live_only_trip_info(&trip_id, &pool).await {
+                Ok(Some(info)) => JsonOrAccept(Versioned::new(1, info), headers).into_response(),
+                Ok(None) => ApiError::not_found("Trip not found").into_response(),
+                Err(e) => {
+                    error!(%e, ?trip_id, "Failed to build live-only trip info");
+                    ApiError::internal("Failed to get trip").into_response()
+                }
+            };
+        }
+        Err(e) => {
+            error!(%e, ?trip_id, "Failed to resolve trip_key");
+            return ApiError::internal("Failed to get trip").into_response();
+        }
+    };
+
     let (trip_shapes, scheduled, live_data, global_base_midnight) = tokio::join!(
-        fetch_trip_shapes(&trip_id, &pool),
-        fetch_scheduled_stops(&trip_id, &pool),
+        fetch_trip_shapes(&canonical, &pool),
+        fetch_scheduled_stops(&canonical, &pool),
         fetch_live_trip_data(&trip_id, &pool),
         get_base_midnight(),
     );
@@ -737,6 +755,66 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
         headers,
     )
     .into_response()
+}
+
+async fn resolve_static_trip_id(
+    trip_key: &str,
+    pool: &PgPool,
+) -> Result<Option<String>, sqlx::Error> {
+    let row = Database::logged(
+        "resolve_static_trip_id",
+        sqlx::query!(
+            "SELECT trip_id FROM gtfs_trips WHERE trip_key = $1 LIMIT 1",
+            trip_key
+        )
+        .fetch_optional(pool),
+    )
+    .await?;
+
+    Ok(row.map(|r| r.trip_id))
+}
+
+async fn build_live_only_trip_info(
+    trip_id: &str,
+    pool: &PgPool,
+) -> Result<Option<TripInfo>, sqlx::Error> {
+    let rows = Database::logged(
+        "get_trip_info_live_only",
+        sqlx::query!(
+            "
+            SELECT lst.stop_id, lst.stop_sequence, lst.arrival_time, s.stop_name
+            FROM live_trip_stop_times lst
+            LEFT JOIN gtfs_stops s ON s.stop_id = lst.stop_id
+            WHERE lst.trip_id = $1
+            ORDER BY lst.stop_sequence
+            ",
+            trip_id
+        )
+        .fetch_all(pool),
+    )
+    .await?;
+
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    let stop_times = rows
+        .into_iter()
+        .map(|r| TripStopTime {
+            stop_id: r.stop_id,
+            stop_sequence: i64::from(r.stop_sequence),
+            stop_name: r.stop_name.unwrap_or_default(),
+            arrival_time: r.arrival_time.map(i64::from),
+        })
+        .collect::<Vec<_>>();
+
+    let stop_ids = stop_times.iter().map(|s| s.stop_id.clone()).collect();
+
+    Ok(Some(TripInfo {
+        stop_ids,
+        route: vec![],
+        stop_times,
+    }))
 }
 
 struct Coord {
