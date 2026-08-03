@@ -790,69 +790,15 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
         let stmts_start = Instant::now();
 
         {
-            let schedule_offsets = {
-                let trip_keys = all_stop_times
-                    .keys()
-                    .map(|t| trip_key(t))
-                    .collect::<Vec<_>>();
-                if trip_keys.is_empty() {
-                    HashMap::new()
-                } else {
-                    #[derive(Debug)]
-                    struct ScheduleOffsetRow {
-                        trip_key: Option<String>,
-                        stop_sequence: i32,
-                        arrival_time_seconds: Option<i32>,
-                    }
-
-                    let mut map = HashMap::new();
-                    if let Ok(rows) = Database::logged(
-                        "schedule_offsets",
-                        sqlx::query_as!(
-                            ScheduleOffsetRow,
-                            "
-                        SELECT
-                              trip_key
-                            , stop_sequence
-                            , arrival_time_seconds
-                        FROM gtfs_stop_times
-                        WHERE   trip_key = ANY($1)
-                            AND arrival_time_seconds IS NOT NULL
-                        ",
-                            &trip_keys,
-                        )
-                        .fetch_all(&Database::pool()),
-                    )
-                    .await
-                    {
-                        for row in rows {
-                            if let (Some(trip_key), Some(offset)) =
-                                (row.trip_key, row.arrival_time_seconds)
-                            {
-                                map.insert(
-                                    (trip_key, i64::from(row.stop_sequence)),
-                                    i64::from(offset),
-                                );
-                            }
-                        }
-                    }
-                    map
-                }
-            };
+            let schedule_offsets = crate::database::schedule_offsets::snapshot();
 
             let best_base = schedule::compute_base_midnight(all_stop_times.iter().flat_map(
                 |(trip_id, stops)| {
                     let key = trip_key(trip_id);
                     let offsets = &schedule_offsets;
                     stops.iter().map(move |s| {
-                        let offset = offsets
-                            .get(&(key.clone(), {
-                                #[allow(clippy::cast_possible_wrap)]
-                                {
-                                    s.stop_sequence as i64
-                                }
-                            }))
-                            .copied();
+                        #[allow(clippy::cast_possible_wrap)]
+                        let offset = offsets.get(&key, s.stop_sequence as i64);
                         (s.arrival_time, s.arrival_delay, offset)
                     })
                 },

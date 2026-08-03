@@ -1,13 +1,18 @@
 use std::{
+    str::FromStr,
     sync::OnceLock,
     time::{Duration, Instant},
 };
 
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tracing::{debug, trace, warn};
 
 use crate::cli::DatabaseUrl;
 
+pub mod schedule_offsets;
 pub mod time;
 
 static DATABASE: OnceLock<PgPool> = OnceLock::new();
@@ -22,9 +27,12 @@ impl Database {
 
         debug!(url = ?url, "Initializing database");
 
+        let connect_options =
+            PgConnectOptions::from_str(connection_string)?.options([("random_page_cost", "1.1")]);
+
         let pool = PgPoolOptions::new()
             .max_connections(20)
-            .connect(connection_string)
+            .connect_with(connect_options)
             .await?;
 
         sqlx::migrate!("./migrations").run(&pool).await?;
@@ -32,6 +40,8 @@ impl Database {
         DATABASE
             .set(pool.clone())
             .map_err(|_| anyhow::anyhow!("Failed to initialize database, pool already set"))?;
+
+        schedule_offsets::init().await?;
 
         debug!("Database initialized");
 

@@ -10,7 +10,12 @@ use std::{
 use tokio::sync::Notify;
 use tracing::{debug, trace, warn};
 
-use crate::{admin, cli::Config, database::Database, proto::gtfs_schedule::data::GtfsSchedule};
+use crate::{
+    admin,
+    cli::Config,
+    database::{Database, schedule_offsets},
+    proto::gtfs_schedule::data::GtfsSchedule,
+};
 
 static DATA_NOTIFICATION: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
 static FORCE_SYNC: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
@@ -218,6 +223,8 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
             )
             .await
             .map_err(FetcherError::Database)?;
+
+            schedule_offsets::reload().await;
 
             debug!("Schedule updated");
 

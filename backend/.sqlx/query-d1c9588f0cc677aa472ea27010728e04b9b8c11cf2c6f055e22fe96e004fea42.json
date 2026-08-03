@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                        SELECT\n                              trip_key\n                            , stop_sequence\n                            , arrival_time_seconds\n                        FROM gtfs_stop_times\n                        WHERE   trip_key = ANY($1)\n                            AND arrival_time_seconds IS NOT NULL\n                        ",
+  "query": "\n        SELECT trip_key, stop_sequence, arrival_time_seconds\n        FROM gtfs_stop_times\n        WHERE arrival_time_seconds IS NOT NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -38,9 +38,7 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "TextArray"
-      ]
+      "Left": []
     },
     "nullable": [
       true,
@@ -48,5 +46,5 @@
       true
     ]
   },
-  "hash": "0d4431d759f62a68988124caa1e80ac005e7dbe420e5a6e939de3771ccdd0ef9"
+  "hash": "d1c9588f0cc677aa472ea27010728e04b9b8c11cf2c6f055e22fe96e004fea42"
 }
