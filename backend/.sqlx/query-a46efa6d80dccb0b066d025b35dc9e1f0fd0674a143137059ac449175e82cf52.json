@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE user_oauth_identities\n        SET provider_email        = $1,\n            provider_display_name = $2,\n            provider_avatar_url   = $3,\n            updated_at            = $4\n        WHERE id = $5\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a46efa6d80dccb0b066d025b35dc9e1f0fd0674a143137059ac449175e82cf52"
+}

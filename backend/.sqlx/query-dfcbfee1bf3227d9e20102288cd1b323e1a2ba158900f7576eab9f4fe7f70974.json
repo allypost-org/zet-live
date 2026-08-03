@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO user_notices\n            ( id, user_id, text, severity, created_at )\n        VALUES\n            ( $1, $2, $3, $4, $5 )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dfcbfee1bf3227d9e20102288cd1b323e1a2ba158900f7576eab9f4fe7f70974"
+}

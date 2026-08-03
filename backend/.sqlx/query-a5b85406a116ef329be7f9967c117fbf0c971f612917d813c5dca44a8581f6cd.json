@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO pending_transfers\n            ( token_hash\n            , target_user_id\n            , provider\n            , provider_subject\n            , source_user_id\n            , expires_at\n            , created_at\n            )\n        VALUES\n            ( $1\n            , $2\n            , $3\n            , $4\n            , $5\n            , $6\n            , $7\n            )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a5b85406a116ef329be7f9967c117fbf0c971f612917d813c5dca44a8581f6cd"
+}

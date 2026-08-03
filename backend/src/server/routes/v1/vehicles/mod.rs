@@ -23,9 +23,9 @@ pub async fn get_all(headers: HeaderMap) -> impl IntoResponse {
         prev_latitude: x.prev_latitude,
         prev_longitude: x.prev_longitude,
         next_stop_id: x.next_stop_id,
-        next_stop_sequence: x.next_stop_sequence.map(i64::cast_unsigned),
-        next_stop_arrival_delay: x.next_stop_arrival_delay,
-        next_stop_arrival_time: x.next_stop_arrival_time,
+        next_stop_sequence: x.next_stop_sequence.map(|s| i64::from(s).cast_unsigned()),
+        next_stop_arrival_delay: x.next_stop_arrival_delay.map(i64::from),
+        next_stop_arrival_time: x.next_stop_arrival_time.map(i64::from),
     })
     .collect::<Vec<_>>();
 

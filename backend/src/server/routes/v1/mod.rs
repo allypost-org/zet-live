@@ -15,7 +15,6 @@ use axum::{
     extract::DefaultBodyLimit,
     routing::{delete, get, post},
 };
-use sqlx::AssertSqlSafe;
 use tokio::sync::{RwLock, watch};
 use tracing::{error, trace, warn};
 
@@ -351,7 +350,7 @@ pub async fn fetch_gbfs_stations() -> Result<Vec<GbfsStation>, sqlx::Error> {
             , st.is_returning
         FROM gbfs_stations s
         LEFT JOIN gbfs_station_status st ON st.station_id = s.station_id
-        WHERE st.is_installed = 1 OR st.is_installed IS NULL
+        WHERE st.is_installed OR st.is_installed IS NULL
         "
     )
     .fetch_all(&Database::pool())
@@ -364,11 +363,11 @@ pub async fn fetch_gbfs_stations() -> Result<Vec<GbfsStation>, sqlx::Error> {
             name: r.name,
             lat: r.lat,
             lon: r.lon,
-            num_bikes_available: r.num_bikes_available,
-            num_docks_available: r.num_docks_available,
-            is_renting: r.is_renting.is_some_and(|v| v != 0),
-            is_returning: r.is_returning.is_some_and(|v| v != 0),
-            capacity: r.capacity,
+            num_bikes_available: r.num_bikes_available.map(i64::from),
+            num_docks_available: r.num_docks_available.map(i64::from),
+            is_renting: r.is_renting.unwrap_or(false),
+            is_returning: r.is_returning.unwrap_or(false),
+            capacity: r.capacity.map(i64::from),
         })
         .collect())
 }
@@ -436,7 +435,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 for trip_id in &current_feed_trip_ids {
                     let key = trip_key(trip_id);
                     if let Err(e) = sqlx::query!(
-                        "INSERT INTO live_trips (trip_id, trip_key) VALUES (?, ?)",
+                        "INSERT INTO live_trips (trip_id, trip_key) VALUES ($1, $2)",
                         trip_id,
                         key
                     )
@@ -453,8 +452,6 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     return;
                 }
             }
-
-            Database::optimize().await;
 
             {
                 let stops = Database::logged(
@@ -512,9 +509,10 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     sqlx::query_scalar!(
                         "
                         SELECT DISTINCT
-                            stop_id
+                            gst.stop_id
                         FROM live_trips lt
                         LEFT JOIN gtfs_stop_times gst ON lt.trip_key = gst.trip_key
+                        WHERE gst.stop_id IS NOT NULL
                         "
                     )
                     .fetch_all(&Database::pool()),
@@ -522,7 +520,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 .await;
 
                 match rows {
-                    Ok(rows) => rows.into_iter().flatten().collect(),
+                    Ok(rows) => rows.into_iter().collect(),
                     Err(e) => {
                         error!(?e, "Error getting active stops");
                         return;
@@ -559,18 +557,15 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             arrival_delay: Option<i64>,
         }
 
-        #[derive(sqlx::FromRow)]
         struct RouteLongNameRow {
             route_id: String,
             route_long_name: Option<String>,
         }
 
-        #[derive(sqlx::FromRow)]
         struct TripHeadsignRow {
             trip_key: String,
             trip_headsign: Option<String>,
         }
-
         let current_stop_sequences = vehicles_feed
             .entity
             .iter()
@@ -677,23 +672,23 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             if route_ids.is_empty() {
                 HashMap::new()
             } else {
-                let query = format!(
-                    "
+                let rows = Database::logged(
+                    "route_long_names",
+                    sqlx::query_as!(
+                        RouteLongNameRow,
+                        "
                     SELECT
                           route_id
                         , NULLIF(route_long_name, '') AS route_long_name
                     FROM gtfs_routes
-                    WHERE route_id IN ({})
+                    WHERE route_id = ANY($1)
                     ",
-                    route_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", "),
-                );
-                let mut q = sqlx::query_as::<_, RouteLongNameRow>(AssertSqlSafe(query));
-                for id in &route_ids {
-                    q = q.bind(id);
-                }
-                let rows = Database::logged("route_long_names", q.fetch_all(&Database::pool()))
-                    .await
-                    .unwrap_or_default();
+                        &route_ids,
+                    )
+                    .fetch_all(&Database::pool()),
+                )
+                .await
+                .unwrap_or_default();
 
                 rows.into_iter()
                     .filter_map(|row| row.route_long_name.map(|name| (row.route_id, name)))
@@ -743,23 +738,23 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             if trip_keys.is_empty() {
                 HashMap::new()
             } else {
-                let query = format!(
-                    "
+                let rows = Database::logged(
+                    "trip_headsigns",
+                    sqlx::query_as!(
+                        TripHeadsignRow,
+                        "
                     SELECT
-                          trip_key
+                          trip_key AS \"trip_key!\"
                         , NULLIF(trip_headsign, '') AS trip_headsign
                     FROM gtfs_trips
-                    WHERE trip_key IN ({})
+                    WHERE trip_key = ANY($1)
                     ",
-                    trip_keys.iter().map(|_| "?").collect::<Vec<_>>().join(", "),
-                );
-                let mut q = sqlx::query_as::<_, TripHeadsignRow>(AssertSqlSafe(query));
-                for key in &trip_keys {
-                    q = q.bind(key);
-                }
-                let rows = Database::logged("trip_headsigns", q.fetch_all(&Database::pool()))
-                    .await
-                    .unwrap_or_default();
+                        &trip_keys,
+                    )
+                    .fetch_all(&Database::pool()),
+                )
+                .await
+                .unwrap_or_default();
 
                 rows.into_iter()
                     .filter_map(|row| row.trip_headsign.map(|name| (row.trip_key, name)))
@@ -803,28 +798,42 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 if trip_keys.is_empty() {
                     HashMap::new()
                 } else {
-                    let sql = format!(
-                        "
+                    #[derive(Debug)]
+                    struct ScheduleOffsetRow {
+                        trip_key: Option<String>,
+                        stop_sequence: i32,
+                        arrival_time_seconds: Option<i32>,
+                    }
+
+                    let mut map = HashMap::new();
+                    if let Ok(rows) = Database::logged(
+                        "schedule_offsets",
+                        sqlx::query_as!(
+                            ScheduleOffsetRow,
+                            "
                         SELECT
                               trip_key
                             , stop_sequence
                             , arrival_time_seconds
                         FROM gtfs_stop_times
-                        WHERE   trip_key IN ({})
+                        WHERE   trip_key = ANY($1)
                             AND arrival_time_seconds IS NOT NULL
                         ",
-                        trip_keys.iter().map(|_| "?").collect::<Vec<_>>().join(", ")
-                    );
-                    let mut map = HashMap::new();
-                    let mut q = sqlx::query_as::<_, (String, i64, i64)>(AssertSqlSafe(sql));
-                    for key in &trip_keys {
-                        q = q.bind(key);
-                    }
-                    if let Ok(rows) =
-                        Database::logged("schedule_offsets", q.fetch_all(&Database::pool())).await
+                            &trip_keys,
+                        )
+                        .fetch_all(&Database::pool()),
+                    )
+                    .await
                     {
-                        for (trip_key, stop_sequence, offset) in rows {
-                            map.insert((trip_key, stop_sequence), offset);
+                        for row in rows {
+                            if let (Some(trip_key), Some(offset)) =
+                                (row.trip_key, row.arrival_time_seconds)
+                            {
+                                map.insert(
+                                    (trip_key, i64::from(row.stop_sequence)),
+                                    i64::from(offset),
+                                );
+                            }
                         }
                     }
                     map
@@ -896,8 +905,10 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                         v as i32
                     }
                 });
-                let next_stop_arrival_delay = vehicle.next_stop_arrival_delay;
-                let next_stop_arrival_time = vehicle.next_stop_arrival_time;
+                #[allow(clippy::cast_possible_truncation)]
+                let next_stop_arrival_delay = vehicle.next_stop_arrival_delay.map(|v| v as i32);
+                #[allow(clippy::cast_possible_truncation)]
+                let next_stop_arrival_time = vehicle.next_stop_arrival_time.map(|v| v as i32);
 
                 let q = sqlx::query!(
                     "
@@ -920,21 +931,21 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                         , next_stop_arrival_time
                         )
                     VALUES
-                        ( ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
-                        , ?
+                        ( $1
+                        , $2
+                        , $3
+                        , $4
+                        , $5
+                        , $6
+                        , $7
+                        , $8
+                        , $9
+                        , $10
+                        , $11
+                        , $12
+                        , $13
+                        , $14
+                        , $15
                         )
                     ",
                     id,
@@ -965,6 +976,10 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     let stop_id: &str = stu.stop_id.as_str();
                     #[allow(clippy::cast_possible_truncation)]
                     let stop_sequence = stu.stop_sequence as i32;
+                    #[allow(clippy::cast_possible_truncation)]
+                    let arrival_time = stu.arrival_time.map(|v| v as i32);
+                    #[allow(clippy::cast_possible_truncation)]
+                    let arrival_delay = stu.arrival_delay.map(|v| v as i32);
 
                     let q = sqlx::query!(
                         "
@@ -977,18 +992,18 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                             , arrival_delay
                             )
                         VALUES
-                            ( ?
-                            , ?
-                            , ?
-                            , ?
-                            , ?
+                            ( $1
+                            , $2
+                            , $3
+                            , $4
+                            , $5
                             )
                         ",
                         trip_id,
                         stop_id,
                         stop_sequence,
-                        stu.arrival_time,
-                        stu.arrival_delay,
+                        arrival_time,
+                        arrival_delay,
                     );
 
                     if let Err(e) = q.execute(&mut *tx).await {
@@ -1001,7 +1016,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             if let Err(e) = Database::logged(
                 "update_base_midnight",
                 sqlx::query!(
-                    "UPDATE live_feed_metadata SET base_midnight = ? WHERE id = 0",
+                    "UPDATE live_feed_metadata SET base_midnight = $1 WHERE id = 0",
                     best_base
                 )
                 .execute(&mut *tx),
@@ -1019,8 +1034,6 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
         }
 
         trace!(took = ?stmts_start.elapsed(), "Updated vehicles");
-
-        Database::optimize().await;
 
         let vehicles = tokio::task::spawn_blocking(move || {
             let simple_vehicles_feed = vehicles

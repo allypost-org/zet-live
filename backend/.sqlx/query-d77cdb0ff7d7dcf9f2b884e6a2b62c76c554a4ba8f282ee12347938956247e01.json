@@ -1,11 +1,11 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "\n            SELECT *\n            FROM gtfs_routes\n            ",
   "describe": {
     "columns": [
       {
-        "name": "route_id",
         "ordinal": 0,
+        "name": "route_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -15,8 +15,8 @@
         }
       },
       {
-        "name": "agency_id",
         "ordinal": 1,
+        "name": "agency_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -26,8 +26,8 @@
         }
       },
       {
-        "name": "route_short_name",
         "ordinal": 2,
+        "name": "route_short_name",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -37,8 +37,8 @@
         }
       },
       {
-        "name": "route_long_name",
         "ordinal": 3,
+        "name": "route_long_name",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -48,8 +48,8 @@
         }
       },
       {
-        "name": "route_desc",
         "ordinal": 4,
+        "name": "route_desc",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -59,9 +59,9 @@
         }
       },
       {
-        "name": "route_type",
         "ordinal": 5,
-        "type_info": "Integer",
+        "name": "route_type",
+        "type_info": "Int2",
         "origin": {
           "Table": {
             "table": "gtfs_routes",
@@ -70,8 +70,8 @@
         }
       },
       {
-        "name": "route_url",
         "ordinal": 6,
+        "name": "route_url",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -81,8 +81,8 @@
         }
       },
       {
-        "name": "route_color",
         "ordinal": 7,
+        "name": "route_color",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -92,8 +92,8 @@
         }
       },
       {
-        "name": "route_text_color",
         "ordinal": 8,
+        "name": "route_text_color",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -104,7 +104,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": []
     },
     "nullable": [
       false,

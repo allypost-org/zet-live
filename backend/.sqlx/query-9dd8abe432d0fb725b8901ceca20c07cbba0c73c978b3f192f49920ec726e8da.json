@@ -1,11 +1,11 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT * FROM live_vehicles",
   "describe": {
     "columns": [
       {
-        "name": "vehicle_id",
         "ordinal": 0,
+        "name": "vehicle_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -15,8 +15,8 @@
         }
       },
       {
-        "name": "route_id",
         "ordinal": 1,
+        "name": "route_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -26,8 +26,8 @@
         }
       },
       {
-        "name": "trip_id",
         "ordinal": 2,
+        "name": "trip_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -37,9 +37,9 @@
         }
       },
       {
-        "name": "latitude",
         "ordinal": 3,
-        "type_info": "Float",
+        "name": "latitude",
+        "type_info": "Float8",
         "origin": {
           "Table": {
             "table": "live_vehicles",
@@ -48,9 +48,9 @@
         }
       },
       {
-        "name": "longitude",
         "ordinal": 4,
-        "type_info": "Float",
+        "name": "longitude",
+        "type_info": "Float8",
         "origin": {
           "Table": {
             "table": "live_vehicles",
@@ -59,9 +59,9 @@
         }
       },
       {
-        "name": "prev_latitude",
         "ordinal": 5,
-        "type_info": "Float",
+        "name": "prev_latitude",
+        "type_info": "Float8",
         "origin": {
           "Table": {
             "table": "live_vehicles",
@@ -70,9 +70,9 @@
         }
       },
       {
-        "name": "prev_longitude",
         "ordinal": 6,
-        "type_info": "Float",
+        "name": "prev_longitude",
+        "type_info": "Float8",
         "origin": {
           "Table": {
             "table": "live_vehicles",
@@ -81,8 +81,8 @@
         }
       },
       {
-        "name": "next_stop_id",
         "ordinal": 7,
+        "name": "next_stop_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -92,9 +92,9 @@
         }
       },
       {
-        "name": "next_stop_sequence",
         "ordinal": 8,
-        "type_info": "Integer",
+        "name": "next_stop_sequence",
+        "type_info": "Int4",
         "origin": {
           "Table": {
             "table": "live_vehicles",
@@ -103,9 +103,9 @@
         }
       },
       {
-        "name": "next_stop_arrival_delay",
         "ordinal": 9,
-        "type_info": "Integer",
+        "name": "next_stop_arrival_delay",
+        "type_info": "Int4",
         "origin": {
           "Table": {
             "table": "live_vehicles",
@@ -114,9 +114,9 @@
         }
       },
       {
-        "name": "next_stop_arrival_time",
         "ordinal": 10,
-        "type_info": "Integer",
+        "name": "next_stop_arrival_time",
+        "type_info": "Int4",
         "origin": {
           "Table": {
             "table": "live_vehicles",
@@ -125,9 +125,9 @@
         }
       },
       {
-        "name": "bearing",
         "ordinal": 11,
-        "type_info": "Float",
+        "name": "bearing",
+        "type_info": "Float8",
         "origin": {
           "Table": {
             "table": "live_vehicles",
@@ -136,8 +136,8 @@
         }
       },
       {
-        "name": "route_long_name",
         "ordinal": 12,
+        "name": "route_long_name",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -147,8 +147,8 @@
         }
       },
       {
-        "name": "trip_headsign",
         "ordinal": 13,
+        "name": "trip_headsign",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -158,8 +158,8 @@
         }
       },
       {
-        "name": "trip_key",
         "ordinal": 14,
+        "name": "trip_key",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -170,7 +170,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": []
     },
     "nullable": [
       false,

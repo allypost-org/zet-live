@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        INSERT INTO\n                        gbfs_station_status\n                            ( station_id\n                            , num_bikes_available\n                            , num_docks_available\n                            , is_installed\n                            , is_renting\n                            , is_returning\n                            , last_reported\n                            , vehicle_types_available\n                            )\n                        VALUES\n                            ( $1, $2, $3, $4, $5, $6, $7, $8 )\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4",
+        "Int4",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7a23fb489754c039070b2273ec3d80a0241eb5a166ce7745281de575c4851f3d"
+}

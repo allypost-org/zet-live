@@ -56,6 +56,10 @@ impl GbfsFeed for Feed {
                 Some(value) => Some(serde_json::to_string(value)?),
                 None => None,
             };
+            #[allow(clippy::cast_possible_truncation)]
+            let num_bikes_available = station.num_bikes_available.map(|v| v as i32);
+            #[allow(clippy::cast_possible_truncation)]
+            let num_docks_available = station.num_docks_available.map(|v| v as i32);
 
             sqlx::query!(
                 "
@@ -71,14 +75,14 @@ impl GbfsFeed for Feed {
                             , vehicle_types_available
                             )
                         VALUES
-                            ( ?, ?, ?, ?, ?, ?, ?, ? )
+                            ( $1, $2, $3, $4, $5, $6, $7, $8 )
                         ",
                 station.station_id,
-                station.num_bikes_available,
-                station.num_docks_available,
-                i64::from(station.is_installed),
-                i64::from(station.is_renting),
-                i64::from(station.is_returning),
+                num_bikes_available,
+                num_docks_available,
+                station.is_installed,
+                station.is_renting,
+                station.is_returning,
                 station.last_reported,
                 vehicle_types_available,
             )

@@ -15,7 +15,7 @@ pub struct StopTime {
     #[serde(alias = "stop_id")]
     pub stop_id: String,
     #[serde(alias = "stop_sequence")]
-    pub stop_sequence: u32,
+    pub stop_sequence: i32,
     #[serde(alias = "stop_headsign")]
     pub stop_headsign: Option<String>,
     #[serde(alias = "pickup_type")]

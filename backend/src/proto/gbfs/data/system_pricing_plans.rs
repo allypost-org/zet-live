@@ -57,6 +57,9 @@ impl GbfsFeed for Feed {
                 Some(value) => Some(serde_json::to_string(value)?),
                 None => None,
             };
+            let price = plan
+                .price
+                .and_then(|f| rust_decimal::Decimal::try_from(f).ok());
 
             sqlx::query!(
                 "
@@ -71,13 +74,13 @@ impl GbfsFeed for Feed {
                     , per_min_pricing
                     )
                 VALUES
-                    ( ?, ?, ?, ?, ?, ?, ? )
+                    ( $1, $2, $3, $4, $5, $6, $7 )
                 ",
                 plan.plan_id,
                 plan.name,
                 plan.currency,
-                plan.price,
-                i64::from(plan.is_taxable),
+                price,
+                plan.is_taxable,
                 plan.description,
                 per_min_pricing,
             )

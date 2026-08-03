@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                  gs.shape_pt_lat  AS \"lat!: Option<f64>\"\n                , gs.shape_pt_lon  AS \"lon!: Option<f64>\"\n                , gs.shape_pt_sequence AS \"sequence!: Option<i32>\"\n            FROM gtfs_trips t\n            LEFT JOIN gtfs_shapes gs ON gs.shape_id = t.shape_id\n            WHERE t.trip_id = $1\n            ORDER BY gs.shape_pt_sequence\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "lat!: Option<f64>",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_lat"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "lon!: Option<f64>",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_lon"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "sequence!: Option<i32>",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_sequence"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ae421eaa094075249fee8f2dab75c215079be05ef66102f35d3d32804d828635"
+}

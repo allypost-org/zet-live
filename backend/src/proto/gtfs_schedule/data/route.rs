@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::FileData;
-use crate::{proto::gtfs_schedule::data::BulkInsert, sqlx_int_enum_decode};
+use crate::proto::gtfs_schedule::data::BulkInsert;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -68,7 +68,7 @@ impl FileData for Route {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr, sqlx::Type)]
-#[repr(u8)]
+#[repr(i16)]
 pub enum RouteType {
     /// Tram, Streetcar, Light rail. Any light rail or street level system within a metropolitan area.
     Tram = 0,
@@ -92,26 +92,30 @@ pub enum RouteType {
     Monorail = 12,
 }
 
-sqlx_int_enum_decode!(RouteType, |val| {
-    match val {
-        0 => Ok(RouteType::Tram),
-        1 => Ok(RouteType::Subway),
-        2 => Ok(RouteType::Rail),
-        3 => Ok(RouteType::Bus),
-        4 => Ok(RouteType::Ferry),
-        5 => Ok(RouteType::CableTram),
-        6 => Ok(RouteType::Gondola),
-        7 => Ok(RouteType::Funicular),
-        11 => Ok(RouteType::Trolley),
-        12 => Ok(RouteType::Monorail),
-        _ => Err(format!("unknown RouteType: {val}").into()),
+impl TryFrom<i16> for RouteType {
+    type Error = ();
+
+    fn try_from(v: i16) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(Self::Tram),
+            1 => Ok(Self::Subway),
+            2 => Ok(Self::Rail),
+            3 => Ok(Self::Bus),
+            4 => Ok(Self::Ferry),
+            5 => Ok(Self::CableTram),
+            6 => Ok(Self::Gondola),
+            7 => Ok(Self::Funicular),
+            11 => Ok(Self::Trolley),
+            12 => Ok(Self::Monorail),
+            _ => Err(()),
+        }
     }
-});
+}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Serialize_repr, Deserialize_repr, sqlx::Type,
 )]
-#[repr(u8)]
+#[repr(i16)]
 pub enum PickupType {
     /// Continuous stopping pickup.
     Continuous = 0,
@@ -124,20 +128,10 @@ pub enum PickupType {
     CoordinateWithDriver = 3,
 }
 
-sqlx_int_enum_decode!(PickupType, |val| {
-    match val {
-        0 => Ok(PickupType::Continuous),
-        1 => Ok(PickupType::None),
-        2 => Ok(PickupType::CallAgency),
-        3 => Ok(PickupType::CoordinateWithDriver),
-        _ => Err(format!("unknown PickupType: {val}").into()),
-    }
-});
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Serialize_repr, Deserialize_repr, sqlx::Type,
 )]
-#[repr(u8)]
+#[repr(i16)]
 pub enum DropOffType {
     /// Continuous stopping drop off.
     Continuous = 0,
@@ -147,12 +141,3 @@ pub enum DropOffType {
     /// Must coordinate with driver to arrange continuous stopping drop off.
     CoordinateWithDriver = 2,
 }
-
-sqlx_int_enum_decode!(DropOffType, |val| {
-    match val {
-        0 => Ok(DropOffType::Continuous),
-        1 => Ok(DropOffType::None),
-        2 => Ok(DropOffType::CoordinateWithDriver),
-        _ => Err(format!("unknown DropOffType: {val}").into()),
-    }
-});

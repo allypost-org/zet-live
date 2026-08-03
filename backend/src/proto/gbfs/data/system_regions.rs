@@ -39,7 +39,7 @@ impl GbfsFeed for Feed {
                 gbfs_regions
                     ( region_id, name )
                 VALUES
-                    ( ?, ? )
+                    ( $1, $2 )
                 ",
                 region.region_id,
                 region.name,

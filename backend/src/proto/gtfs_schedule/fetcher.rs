@@ -163,9 +163,7 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
             .and_then(|x| jiff::fmt::rfc2822::parse(x).ok())
             .map_or_else(jiff::Timestamp::now, |zdt| zdt.timestamp());
 
-        #[allow(clippy::cast_precision_loss)]
-        let time = ts.as_millisecond() as f64 / 1_000.0;
-        time
+        crate::database::time::from_jiff(ts)
     };
 
     let etag = response
@@ -180,7 +178,7 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
     let res = Database::logged(
         "schedule_meta_check",
         sqlx::query!(
-            "SELECT * FROM gtfs_schedule_meta WHERE last_modified >= ? OR etag = ? LIMIT 1",
+            "SELECT * FROM gtfs_schedule_meta WHERE last_modified >= $1 OR etag = $2 LIMIT 1",
             modified,
             etag_param,
         )
@@ -212,7 +210,7 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
             Database::logged(
                 "schedule_meta_insert",
                 sqlx::query!(
-                    "INSERT INTO gtfs_schedule_meta (last_modified, etag) VALUES (?, ?)",
+                    "INSERT INTO gtfs_schedule_meta (last_modified, etag) VALUES ($1, $2)",
                     modified,
                     etag,
                 )

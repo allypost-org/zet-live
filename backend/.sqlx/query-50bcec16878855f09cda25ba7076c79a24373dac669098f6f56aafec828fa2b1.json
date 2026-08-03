@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO user_sessions\n            ( id\n            , token_hash\n            , user_id\n            , expires_at\n            , created_at\n            , ip\n            , user_agent\n            )\n        VALUES\n            ( $1\n            , $2\n            , $3\n            , $4\n            , $5\n            , $6\n            , $7\n            )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bytea",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "50bcec16878855f09cda25ba7076c79a24373dac669098f6f56aafec828fa2b1"
+}

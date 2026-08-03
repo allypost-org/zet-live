@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                                INSERT INTO\n                                gtfs_trips\n                                    ( trip_id\n                                    , route_id\n                                    , service_id\n                                    , trip_headsign\n                                    , trip_short_name\n                                    , direction_id\n                                    , block_id\n                                    , shape_id\n                                    , wheelchair_boarding\n                                    , bikes_allowed\n                                    , trip_key\n                                    )\n                                VALUES\n                                    ( $1\n                                    , $2\n                                    , $3\n                                    , $4\n                                    , $5\n                                    , $6\n                                    , $7\n                                    , $8\n                                    , $9\n                                    , $10\n                                    , $11\n                                    )\n                                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int2",
+        "Text",
+        "Text",
+        "Int2",
+        "Int2",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "69b2f9faebc2525ed8ac9202eecd0719dc108f3d2c5a08872922c0e82c22b9af"
+}

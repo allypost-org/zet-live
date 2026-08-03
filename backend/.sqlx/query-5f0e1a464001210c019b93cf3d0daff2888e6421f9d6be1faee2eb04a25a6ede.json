@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO\n                gbfs_pricing_plans\n                    ( plan_id\n                    , name\n                    , currency\n                    , price\n                    , is_taxable\n                    , description\n                    , per_min_pricing\n                    )\n                VALUES\n                    ( $1, $2, $3, $4, $5, $6, $7 )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Numeric",
+        "Bool",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5f0e1a464001210c019b93cf3d0daff2888e6421f9d6be1faee2eb04a25a6ede"
+}

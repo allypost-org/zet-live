@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO\n                gbfs_vehicle_types\n                    ( vehicle_type_id\n                    , name\n                    , form_factor\n                    , propulsion_type\n                    , rider_capacity\n                    , vehicle_image\n                    , description\n                    )\n                VALUES\n                    ( $1\n                    , $2\n                    , $3\n                    , $4\n                    , $5\n                    , $6\n                    , $7\n                    )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "135ba5c2d45688058b78a9fad7020ae2ea73c677e504dde740462c464b2aae00"
+}

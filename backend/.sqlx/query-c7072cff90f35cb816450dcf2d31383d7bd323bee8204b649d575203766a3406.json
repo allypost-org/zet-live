@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                            INSERT INTO\n                            gtfs_shapes\n                                ( shape_id\n                                , shape_pt_lat\n                                , shape_pt_lon\n                                , shape_pt_sequence\n                                , shape_dist_traveled\n                                ) VALUES\n                                ( $1\n                                , $2\n                                , $3\n                                , $4\n                                , $5\n                                )\n                            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Float8",
+        "Float8",
+        "Int4",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c7072cff90f35cb816450dcf2d31383d7bd323bee8204b649d575203766a3406"
+}

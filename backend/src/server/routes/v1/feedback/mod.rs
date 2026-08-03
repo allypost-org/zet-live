@@ -129,7 +129,7 @@ pub async fn submit(
 
     let category = payload.category.as_str();
     let ip_str = ip.to_string();
-    let now = jiff::Timestamp::now().to_string();
+    let now = crate::database::time::now();
     let build_default = ProjectConfig::app_and_build_date();
     let meta_build = meta_build.unwrap_or_else(|| build_default.to_string());
 
@@ -156,7 +156,7 @@ pub async fn submit(
             , user_id
             )
         VALUES
-            ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
+            ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 )
         ",
         category,
         message,
@@ -193,12 +193,12 @@ pub async fn mine(crate::auth::CurrentUser(user): crate::auth::CurrentUser) -> i
         SELECT id            AS \"id!: i64\",
                category      AS \"category!: String\",
                message       AS \"message!: String\",
-               created_at    AS \"created_at!: String\",
-               handled       AS \"handled!: i64\",
-               dismissed     AS \"dismissed!: i64\",
+               created_at    AS \"created_at!: time::OffsetDateTime\",
+               handled       AS \"handled!: bool\",
+               dismissed     AS \"dismissed!: bool\",
                reply
         FROM feedback
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY created_at DESC
         ",
         user.id,
@@ -218,9 +218,9 @@ pub async fn mine(crate::auth::CurrentUser(user): crate::auth::CurrentUser) -> i
         .map(|r| {
             let status = if r.reply.is_some() {
                 "replied"
-            } else if r.dismissed != 0 {
+            } else if r.dismissed {
                 "dismissed"
-            } else if r.handled != 0 {
+            } else if r.handled {
                 "acknowledged"
             } else {
                 "open"
@@ -229,7 +229,7 @@ pub async fn mine(crate::auth::CurrentUser(user): crate::auth::CurrentUser) -> i
                 "id": r.id,
                 "category": r.category,
                 "message": r.message,
-                "createdAt": r.created_at,
+                "createdAt": crate::database::time::to_jiff(r.created_at),
                 "status": status,
                 "reply": r.reply,
             })

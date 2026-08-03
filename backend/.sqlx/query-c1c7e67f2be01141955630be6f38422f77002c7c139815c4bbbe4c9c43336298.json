@@ -1,0 +1,122 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n              s.station_id AS \"station_id!\"\n            , s.name\n            , s.lat       AS \"lat!: f64\"\n            , s.lon       AS \"lon!: f64\"\n            , s.capacity\n            , st.num_bikes_available\n            , st.num_docks_available\n            , st.is_renting\n            , st.is_returning\n        FROM gbfs_stations s\n        LEFT JOIN gbfs_station_status st ON st.station_id = s.station_id\n        WHERE st.is_installed OR st.is_installed IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "station_id!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gbfs_stations",
+            "name": "station_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gbfs_stations",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "lat!: f64",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gbfs_stations",
+            "name": "lat"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "lon!: f64",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gbfs_stations",
+            "name": "lon"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "capacity",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gbfs_stations",
+            "name": "capacity"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "num_bikes_available",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gbfs_station_status",
+            "name": "num_bikes_available"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "num_docks_available",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gbfs_station_status",
+            "name": "num_docks_available"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "is_renting",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "gbfs_station_status",
+            "name": "is_renting"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "is_returning",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "gbfs_station_status",
+            "name": "is_returning"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "c1c7e67f2be01141955630be6f38422f77002c7c139815c4bbbe4c9c43336298"
+}

@@ -76,8 +76,8 @@ pub enum MetadataStatus {
 }
 
 pub async fn write_metadata(name: &str, entry: &MetadataEntry) {
-    let now = jiff::Timestamp::now().to_string();
-    let value = match serde_json::to_string(entry) {
+    let now = crate::database::time::now();
+    let value = match serde_json::to_value(entry) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(name, error = %e, "Failed to serialize metadata entry");
@@ -93,9 +93,9 @@ pub async fn write_metadata(name: &str, entry: &MetadataEntry) {
             , updated_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
             )
         ON CONFLICT(name)
         DO UPDATE SET
@@ -119,7 +119,7 @@ pub async fn read_all_metadata() -> Vec<(String, MetadataEntry)> {
         "
         SELECT
               name as \"name!\"
-            , value
+            , value AS \"value: serde_json::Value\"
         FROM admin_metadata
         "
     )
@@ -129,7 +129,7 @@ pub async fn read_all_metadata() -> Vec<(String, MetadataEntry)> {
 
     rows.into_iter()
         .filter_map(|x| {
-            let entry: MetadataEntry = serde_json::from_slice(x.value.as_slice()).ok()?;
+            let entry: MetadataEntry = serde_json::from_value(x.value).ok()?;
             Some((x.name, entry))
         })
         .collect()

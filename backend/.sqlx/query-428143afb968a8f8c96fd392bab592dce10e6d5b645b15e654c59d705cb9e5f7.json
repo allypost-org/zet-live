@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                  stop_id\n                , stop_name\n                , latitude\n                , longitude\n            FROM gtfs_stops\n            WHERE stop_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "stop_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "stop_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "stop_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "stop_name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "latitude",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "latitude"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "longitude",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "longitude"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "428143afb968a8f8c96fd392bab592dce10e6d5b645b15e654c59d705cb9e5f7"
+}

@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                  lst.stop_sequence\n                , lst.arrival_time\n                , lst.arrival_delay\n                , lv.next_stop_sequence\n                , lv.next_stop_arrival_time\n            FROM live_trip_stop_times lst\n            LEFT JOIN live_vehicles lv ON lv.trip_id = lst.trip_id\n            WHERE lst.trip_id = $1\n            ORDER BY lst.stop_sequence\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "stop_sequence",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_trip_stop_times",
+            "name": "stop_sequence"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "arrival_time",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_trip_stop_times",
+            "name": "arrival_time"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "arrival_delay",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_trip_stop_times",
+            "name": "arrival_delay"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "next_stop_sequence",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "next_stop_sequence"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "next_stop_arrival_time",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "next_stop_arrival_time"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "8e7fa03fd2b45f154609485c32061bd4e510bdedb3530b70646efe49faa80a7a"
+}

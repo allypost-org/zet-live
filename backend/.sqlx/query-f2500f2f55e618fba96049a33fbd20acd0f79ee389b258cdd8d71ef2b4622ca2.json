@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        SELECT DISTINCT\n                            gst.stop_id\n                        FROM live_trips lt\n                        LEFT JOIN gtfs_stop_times gst ON lt.trip_key = gst.trip_key\n                        WHERE gst.stop_id IS NOT NULL\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "stop_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "stop_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f2500f2f55e618fba96049a33fbd20acd0f79ee389b258cdd8d71ef2b4622ca2"
+}

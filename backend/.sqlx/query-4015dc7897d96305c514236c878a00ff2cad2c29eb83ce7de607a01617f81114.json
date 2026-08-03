@@ -1,0 +1,54 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM pending_transfers\n        WHERE token_hash = $1 AND expires_at > $2 AND target_user_id = $3\n        RETURNING provider, provider_subject, source_user_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_transfers",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "provider_subject",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_transfers",
+            "name": "provider_subject"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "source_user_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_transfers",
+            "name": "source_user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4015dc7897d96305c514236c878a00ff2cad2c29eb83ce7de607a01617f81114"
+}

@@ -19,7 +19,7 @@ pub struct Shape {
     pub longitude: f64,
     #[serde(alias = "shape_pt_sequence")]
     #[sqlx(rename = "shape_pt_sequence")]
-    pub sequence: u32,
+    pub sequence: i32,
     #[serde(alias = "shape_dist_traveled")]
     #[sqlx(rename = "shape_dist_traveled")]
     pub distance: Option<f64>,

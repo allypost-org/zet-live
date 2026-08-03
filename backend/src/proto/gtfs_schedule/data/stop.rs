@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::FileData;
-use crate::{proto::gtfs_schedule::data::BulkInsert, sqlx_int_enum_decode};
+use crate::proto::gtfs_schedule::data::BulkInsert;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -86,7 +86,7 @@ impl From<Stop> for SimpleStop {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr, sqlx::Type)]
-#[repr(u8)]
+#[repr(i16)]
 pub enum LocationType {
     /// Stop (or Platform). A location where passengers board or disembark from a transit vehicle. Is called a platform when defined within a `parent_station`.
     Stop = 0,
@@ -100,21 +100,10 @@ pub enum LocationType {
     BoardingArea = 4,
 }
 
-sqlx_int_enum_decode!(LocationType, |val| {
-    match val {
-        0 => Ok(LocationType::Stop),
-        1 => Ok(LocationType::Station),
-        2 => Ok(LocationType::EntranceOrExit),
-        3 => Ok(LocationType::GenericNode),
-        4 => Ok(LocationType::BoardingArea),
-        _ => Err(format!("unknown LocationType: {val}").into()),
-    }
-});
-
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Serialize_repr, Deserialize_repr, sqlx::Type,
 )]
-#[repr(u8)]
+#[repr(i16)]
 pub enum WheelchairBoarding {
     /// No accessibility information for the stop.
     #[default]
@@ -125,11 +114,15 @@ pub enum WheelchairBoarding {
     None = 2,
 }
 
-sqlx_int_enum_decode!(WheelchairBoarding, |val| {
-    match val {
-        0 => Ok(WheelchairBoarding::Unknown),
-        1 => Ok(WheelchairBoarding::Some),
-        2 => Ok(WheelchairBoarding::None),
-        _ => Err(format!("unknown WheelchairBoarding: {val}").into()),
+impl TryFrom<i16> for WheelchairBoarding {
+    type Error = ();
+
+    fn try_from(v: i16) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(Self::Unknown),
+            1 => Ok(Self::Some),
+            2 => Ok(Self::None),
+            _ => Err(()),
+        }
     }
-});
+}

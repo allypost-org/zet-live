@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE live_feed_metadata SET base_midnight = $1 WHERE id = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c34c7cf84c65d2a6923430dcd51d51e32f109f164607bfb29a274e7156233fc6"
+}

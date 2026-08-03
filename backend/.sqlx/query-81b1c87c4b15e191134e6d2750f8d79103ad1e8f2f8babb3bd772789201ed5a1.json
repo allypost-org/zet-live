@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO\n                gbfs_regions\n                    ( region_id, name )\n                VALUES\n                    ( $1, $2 )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "81b1c87c4b15e191134e6d2750f8d79103ad1e8f2f8babb3bd772789201ed5a1"
+}

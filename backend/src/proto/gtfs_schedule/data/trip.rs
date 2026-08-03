@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::{FileData, WheelchairBoarding};
-use crate::{proto::gtfs_schedule::data::BulkInsert, sqlx_int_enum_decode};
+use crate::proto::gtfs_schedule::data::BulkInsert;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -55,24 +55,28 @@ impl FileData for Trip {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr, sqlx::Type)]
-#[repr(u8)]
+#[repr(i16)]
 pub enum Direction {
     Outbound = 0,
     Inbound = 1,
 }
 
-sqlx_int_enum_decode!(Direction, |val| {
-    match val {
-        0 => Ok(Direction::Outbound),
-        1 => Ok(Direction::Inbound),
-        _ => Err(format!("unknown Direction: {val}").into()),
+impl TryFrom<i16> for Direction {
+    type Error = ();
+
+    fn try_from(v: i16) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(Self::Outbound),
+            1 => Ok(Self::Inbound),
+            _ => Err(()),
+        }
     }
-});
+}
 
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Serialize_repr, Deserialize_repr, sqlx::Type,
 )]
-#[repr(u8)]
+#[repr(i16)]
 pub enum BikesAllowed {
     #[default]
     Unknown = 0,
@@ -80,11 +84,15 @@ pub enum BikesAllowed {
     NotAllowed = 2,
 }
 
-sqlx_int_enum_decode!(BikesAllowed, |val| {
-    match val {
-        0 => Ok(BikesAllowed::Unknown),
-        1 => Ok(BikesAllowed::Allowed),
-        2 => Ok(BikesAllowed::NotAllowed),
-        _ => Err(format!("unknown BikesAllowed: {val}").into()),
+impl TryFrom<i16> for BikesAllowed {
+    type Error = ();
+
+    fn try_from(v: i16) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(Self::Unknown),
+            1 => Ok(Self::Allowed),
+            2 => Ok(Self::NotAllowed),
+            _ => Err(()),
+        }
     }
-});
+}

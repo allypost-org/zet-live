@@ -191,7 +191,7 @@ impl Providers {
                     warn!(id = %r.id, "auth_providers row has no matching preset; ignoring");
                     continue;
                 };
-                if r.enabled == 0 {
+                if !r.enabled {
                     continue;
                 }
                 map.insert(def.id.to_string(), def.build(r.client_id, r.client_secret));

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO admin_metadata\n            ( name\n            , value\n            , updated_at\n            )\n        VALUES\n            ( $1\n            , $2\n            , $3\n            )\n        ON CONFLICT(name)\n        DO UPDATE SET\n              value = excluded.value\n            , updated_at = excluded.updated_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9129e80d7bb2be16170f7691c8dffe2a2027b02c2591b4c7c4492c90935f7ba4"
+}

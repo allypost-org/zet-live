@@ -48,7 +48,7 @@ impl GtfsSchedule {
                                 })
                         }
                         BulkInsert::Route(r) => {
-                            let route_type = r.route_type.map(|t| t as i32);
+                            let route_type = r.route_type.map(|t| t as i16);
                             let url = r.url.map(|u| u.to_string());
                             sqlx::query!(
                                 "
@@ -65,15 +65,15 @@ impl GtfsSchedule {
                                     , route_text_color
                                     )
                                 VALUES
-                                    ( ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
+                                    ( $1
+                                    , $2
+                                    , $3
+                                    , $4
+                                    , $5
+                                    , $6
+                                    , $7
+                                    , $8
+                                    , $9
                                     )
                                 ",
                                 r.id,
@@ -102,11 +102,11 @@ impl GtfsSchedule {
                                 , shape_pt_sequence
                                 , shape_dist_traveled
                                 ) VALUES
-                                ( ?
-                                , ?
-                                , ?
-                                , ?
-                                , ?
+                                ( $1
+                                , $2
+                                , $3
+                                , $4
+                                , $5
                                 )
                             ",
                             s.id,
@@ -121,8 +121,8 @@ impl GtfsSchedule {
                             anyhow::anyhow!(e).context("Failed to insert into gtfs_shapes")
                         }),
                         BulkInsert::Stop(s) => {
-                            let location_type = s.location_type.map(|l| l as i32);
-                            let wheelchair_boarding = s.wheelchair_boarding as i32;
+                            let location_type = s.location_type.map(|l| l as i16);
+                            let wheelchair_boarding = s.wheelchair_boarding as i16;
                             let url = s.url.map(|u| u.to_string());
                             sqlx::query!(
                                 "
@@ -144,20 +144,20 @@ impl GtfsSchedule {
                                     , platform_code
                                     )
                                 VALUES
-                                    ( ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
+                                    ( $1
+                                    , $2
+                                    , $3
+                                    , $4
+                                    , $5
+                                    , $6
+                                    , $7
+                                    , $8
+                                    , $9
+                                    , $10
+                                    , $11
+                                    , $12
+                                    , $13
+                                    , $14
                                     )
                                 ",
                                 s.id,
@@ -182,9 +182,9 @@ impl GtfsSchedule {
                             })
                         }
                         BulkInsert::Trip(t) => {
-                            let direction_id = t.direction_id.map(|d| d as i32);
-                            let wheelchair_boarding = t.wheelchair_boarding as i32;
-                            let bikes_allowed = t.bikes_allowed as i32;
+                            let direction_id = t.direction_id.map(|d| d as i16);
+                            let wheelchair_boarding = t.wheelchair_boarding as i16;
+                            let bikes_allowed = t.bikes_allowed as i16;
                             let key = trip_key(&t.id);
                             sqlx::query!(
                                 "
@@ -203,17 +203,17 @@ impl GtfsSchedule {
                                     , trip_key
                                     )
                                 VALUES
-                                    ( ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
+                                    ( $1
+                                    , $2
+                                    , $3
+                                    , $4
+                                    , $5
+                                    , $6
+                                    , $7
+                                    , $8
+                                    , $9
+                                    , $10
+                                    , $11
                                     )
                                 ",
                                 t.id,
@@ -248,12 +248,12 @@ impl GtfsSchedule {
                                 , trip_key
                                 )
                             VALUES
-                                ( ?
-                                , ?
-                                , ?
-                                , ?
-                                , ?
-                                , ?
+                                ( $1
+                                , $2
+                                , $3
+                                , $4
+                                , $5
+                                , $6
                                 )
                             ",
                                 st.trip_id,
@@ -298,12 +298,12 @@ impl GtfsSchedule {
                 tx.commit().await?;
                 debug!(took = ?start.elapsed(), "Transaction committed");
 
-                debug!("Vacuuming database");
+                debug!("Analyzing database");
                 let start = Instant::now();
-                if let Err(e) = sqlx::query!("VACUUM").execute(&Database::pool()).await {
-                    warn!(?e, "Failed to vacuum database");
+                if let Err(e) = sqlx::query!("ANALYZE").execute(&Database::pool()).await {
+                    warn!(?e, "Failed to analyze database");
                 } else {
-                    debug!(took = ?start.elapsed(), "Database vacuumed");
+                    debug!(took = ?start.elapsed(), "Database analyzed");
                 }
                 Ok::<_, FileDataError>(())
             }
