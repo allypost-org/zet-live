@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO live_trips (trip_id, trip_key) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "0b5aa2c82b816bf58e7191f0007f908849d6deb700d0093155f4c530b0f63cf1"
+}

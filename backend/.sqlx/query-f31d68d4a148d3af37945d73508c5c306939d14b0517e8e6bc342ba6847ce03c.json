@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                        SELECT DISTINCT\n                            s.stop_id, s.stop_name, s.longitude, s.latitude\n                        FROM live_trips lt\n                        INNER JOIN gtfs_stop_times st on st.trip_id = lt.trip_id\n                        INNER JOIN gtfs_stops s on s.stop_id = st.stop_id\n                        ",
+  "query": "\n                        SELECT DISTINCT\n                            s.stop_id, s.stop_name, s.longitude, s.latitude\n                        FROM live_trips lt\n                        INNER JOIN gtfs_stop_times st on st.trip_key = lt.trip_key\n                        INNER JOIN gtfs_stops s on s.stop_id = st.stop_id\n                        ",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "e5606043405dbd4f0c2edbe9e5e8298db79b5099abb558ba55301bc8e44bd94e"
+  "hash": "f31d68d4a148d3af37945d73508c5c306939d14b0517e8e6bc342ba6847ce03c"
 }

@@ -4,6 +4,7 @@ import { useStore } from "@/store";
 type Step = {
   label: string;
   done: boolean;
+  optional?: boolean;
 };
 
 const FADE_DURATION = 250;
@@ -49,11 +50,11 @@ export function LoadingScreen() {
   const steps: Step[] = [
     { label: "Connecting to API", done: wsConnected },
     { label: "Loading vehicles", done: vehiclesLoaded },
-    { label: "Loading stops", done: stopsLoaded },
+    { label: "Loading stops", done: stopsLoaded, optional: true },
     { label: "Loading map", done: mapReady },
   ];
 
-  const allDone = steps.every((s) => s.done);
+  const allDone = steps.every((s) => s.done || s.optional);
 
   useEffect(() => {
     if (!allDone) return;

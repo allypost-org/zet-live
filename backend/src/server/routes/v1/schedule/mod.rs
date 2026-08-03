@@ -246,7 +246,7 @@ pub async fn get_stop_trips(
                 ORDER BY lst2.stop_sequence DESC LIMIT 1
             ) AS effective_delay
         FROM live_vehicles lv
-        JOIN gtfs_stop_times gst ON gst.trip_id = lv.trip_id
+        JOIN gtfs_stop_times gst ON gst.trip_key = lv.trip_key
         LEFT JOIN live_trip_stop_times lst
             ON  lst.trip_id = lv.trip_id
             AND lst.stop_sequence = gst.stop_sequence

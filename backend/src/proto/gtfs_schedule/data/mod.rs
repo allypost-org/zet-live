@@ -185,6 +185,7 @@ impl GtfsSchedule {
                             let direction_id = t.direction_id.map(|d| d as i32);
                             let wheelchair_boarding = t.wheelchair_boarding as i32;
                             let bikes_allowed = t.bikes_allowed as i32;
+                            let key = trip_key(&t.id);
                             sqlx::query!(
                                 "
                                 INSERT INTO
@@ -199,9 +200,11 @@ impl GtfsSchedule {
                                     , shape_id
                                     , wheelchair_boarding
                                     , bikes_allowed
+                                    , trip_key
                                     )
                                 VALUES
                                     ( ?
+                                    , ?
                                     , ?
                                     , ?
                                     , ?
@@ -223,6 +226,7 @@ impl GtfsSchedule {
                                 t.shape_id,
                                 wheelchair_boarding,
                                 bikes_allowed,
+                                key,
                             )
                             .execute(&mut *tx)
                             .await
@@ -230,8 +234,10 @@ impl GtfsSchedule {
                                 anyhow::anyhow!(e).context("Failed to insert into gtfs_trips")
                             })
                         }
-                        BulkInsert::StopTime(st) => sqlx::query!(
-                            "
+                        BulkInsert::StopTime(st) => {
+                            let key = trip_key(&st.trip_id);
+                            sqlx::query!(
+                                "
                             INSERT INTO
                             gtfs_stop_times
                                 ( trip_id
@@ -239,6 +245,7 @@ impl GtfsSchedule {
                                 , stop_sequence
                                 , arrival_time
                                 , departure_time
+                                , trip_key
                                 )
                             VALUES
                                 ( ?
@@ -246,19 +253,22 @@ impl GtfsSchedule {
                                 , ?
                                 , ?
                                 , ?
+                                , ?
                                 )
                             ",
-                            st.trip_id,
-                            st.stop_id,
-                            st.stop_sequence,
-                            st.arrival_time,
-                            st.departure_time,
-                        )
-                        .execute(&mut *tx)
-                        .await
-                        .map_err(|e| {
-                            anyhow::anyhow!(e).context("Failed to insert into gtfs_stop_times")
-                        }),
+                                st.trip_id,
+                                st.stop_id,
+                                st.stop_sequence,
+                                st.arrival_time,
+                                st.departure_time,
+                                key,
+                            )
+                            .execute(&mut *tx)
+                            .await
+                            .map_err(|e| {
+                                anyhow::anyhow!(e).context("Failed to insert into gtfs_stop_times")
+                            })
+                        }
                     };
                     if let Err(e) = res {
                         warn!(error = ?e, "Failed to execute query");
@@ -407,4 +417,72 @@ pub enum FileDataError {
     JoinBlocking(#[from] tokio::task::JoinError),
     #[error("Failed to execute query: {0:?}")]
     DatabaseInsert(#[from] sqlx::Error),
+}
+
+/// Normalize a GTFS `trip_id` into a stable key by dropping its service-id
+/// segment (the 2nd `_`-separated component).
+///
+/// ZET's GTFS-RT feed publishes every trip under the synthetic service id
+/// `0_40`, which does not exist in the static schedule (whose service ids are
+/// `0_4`..`0_14`). Exact `trip_id` equality joins between realtime and static
+/// data therefore never match. The real trip identity is carried by the other
+/// segments, so this strips the service-id segment and yields a key that is
+/// identical on both sides:
+///
+/// | `trip_id`               | `trip_key`          |
+/// |-------------------------|---------------------|
+/// | `0_40_20601_206_10157`  | `0_20601_206_10157` |
+/// | `0_4_26820_268_10003`   | `0_26820_268_10003` |
+///
+/// Inputs with fewer than two `_`-separated segments (no service-id component
+/// to strip) are returned unchanged.
+///
+/// The SQL counterpart used to backfill existing rows lives in migration
+/// `20260803110000_add_trip_key.up.sql` and must stay in sync with this.
+pub fn trip_key(trip_id: &str) -> String {
+    let Some(first_us) = trip_id.find('_') else {
+        return trip_id.to_string();
+    };
+    let rest = &trip_id[first_us + 1..];
+    let Some(second_us_rel) = rest.find('_') else {
+        return trip_id.to_string();
+    };
+    let prefix = &trip_id[..first_us];
+    let suffix = &rest[second_us_rel + 1..];
+    let mut out = String::with_capacity(prefix.len() + 1 + suffix.len());
+    out.push_str(prefix);
+    out.push('_');
+    out.push_str(suffix);
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drops_service_segment() {
+        assert_eq!(trip_key("0_40_20601_206_10157"), "0_20601_206_10157");
+        assert_eq!(trip_key("0_4_26820_268_10003"), "0_26820_268_10003");
+        assert_eq!(trip_key("0_10_10101_101_20001"), "0_10101_101_20001");
+    }
+
+    #[test]
+    fn realtime_and_static_collide() {
+        assert_eq!(
+            trip_key("0_40_20601_206_10157"),
+            trip_key("0_4_20601_206_10157"),
+        );
+        assert_eq!(
+            trip_key("0_40_20601_206_10157"),
+            trip_key("0_13_20601_206_10157"),
+        );
+    }
+
+    #[test]
+    fn fewer_segments_unchanged() {
+        assert_eq!(trip_key("weird"), "weird");
+        assert_eq!(trip_key("a_b"), "a_b");
+        assert_eq!(trip_key(""), "");
+    }
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                        SELECT DISTINCT\n                            stop_id\n                        FROM live_trips lt\n                        LEFT JOIN gtfs_stop_times gst ON lt.trip_id = gst.trip_id\n                        ",
+  "query": "\n                        SELECT DISTINCT\n                            stop_id\n                        FROM live_trips lt\n                        LEFT JOIN gtfs_stop_times gst ON lt.trip_key = gst.trip_key\n                        ",
   "describe": {
     "columns": [
       {
@@ -22,5 +22,5 @@
       true
     ]
   },
-  "hash": "42b8f10b557983eb043fcd91b9ebce1b544e1a746e96585332ea7b1affdf17e9"
+  "hash": "2286452988b21d1f290c9635c0e161fd99cb0a5f3862bc396749c4b9158eebbf"
 }

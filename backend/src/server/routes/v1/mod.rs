@@ -29,6 +29,7 @@ use crate::{
             data::transit_realtime::FeedMessage,
             fetcher::{get_cached_feed, wait_for_feed_update},
         },
+        gtfs_schedule::data::trip_key,
     },
 };
 
@@ -433,10 +434,14 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 }
 
                 for trip_id in &current_feed_trip_ids {
-                    if let Err(e) =
-                        sqlx::query!("INSERT INTO live_trips (trip_id) VALUES (?)", trip_id)
-                            .execute(&mut *tx)
-                            .await
+                    let key = trip_key(trip_id);
+                    if let Err(e) = sqlx::query!(
+                        "INSERT INTO live_trips (trip_id, trip_key) VALUES (?, ?)",
+                        trip_id,
+                        key
+                    )
+                    .execute(&mut *tx)
+                    .await
                     {
                         error!(?e, "Failed to insert live trip");
                         return;
@@ -459,7 +464,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                         SELECT DISTINCT
                             s.stop_id, s.stop_name, s.longitude, s.latitude
                         FROM live_trips lt
-                        INNER JOIN gtfs_stop_times st on st.trip_id = lt.trip_id
+                        INNER JOIN gtfs_stop_times st on st.trip_key = lt.trip_key
                         INNER JOIN gtfs_stops s on s.stop_id = st.stop_id
                         ",
                     )
@@ -482,7 +487,13 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                             })
                             .collect::<Vec<_>>();
 
-                        if !stops.is_empty() {
+                        if stops.is_empty() {
+                            warn!(
+                                feed_trips = current_feed_trip_ids.len(),
+                                sample_trip_id = ?current_feed_trip_ids.iter().next(),
+                                "Active-stops query returned no rows; SimpleStops left empty",
+                            );
+                        } else {
                             SIMPLE_STOPS.write().await.clone_from(&stops);
                             broadcast_simple_stops(&active_stops_app_state, stops).await;
                         }
@@ -503,7 +514,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                         SELECT DISTINCT
                             stop_id
                         FROM live_trips lt
-                        LEFT JOIN gtfs_stop_times gst ON lt.trip_id = gst.trip_id
+                        LEFT JOIN gtfs_stop_times gst ON lt.trip_key = gst.trip_key
                         "
                     )
                     .fetch_all(&Database::pool()),
@@ -556,7 +567,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
         #[derive(sqlx::FromRow)]
         struct TripHeadsignRow {
-            trip_id: String,
+            trip_key: String,
             trip_headsign: Option<String>,
         }
 
@@ -722,36 +733,36 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
         };
 
         let trip_headsigns = {
-            let trip_ids = vehicles
+            let trip_keys = vehicles
                 .iter()
-                .map(|v| v.trip_id.clone())
+                .map(|v| trip_key(&v.trip_id))
                 .collect::<HashSet<_>>()
                 .into_iter()
                 .collect::<Vec<_>>();
 
-            if trip_ids.is_empty() {
+            if trip_keys.is_empty() {
                 HashMap::new()
             } else {
                 let query = format!(
                     "
                     SELECT
-                          trip_id
+                          trip_key
                         , NULLIF(trip_headsign, '') AS trip_headsign
                     FROM gtfs_trips
-                    WHERE trip_id IN ({})
+                    WHERE trip_key IN ({})
                     ",
-                    trip_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", "),
+                    trip_keys.iter().map(|_| "?").collect::<Vec<_>>().join(", "),
                 );
                 let mut q = sqlx::query_as::<_, TripHeadsignRow>(AssertSqlSafe(query));
-                for id in &trip_ids {
-                    q = q.bind(id);
+                for key in &trip_keys {
+                    q = q.bind(key);
                 }
                 let rows = Database::logged("trip_headsigns", q.fetch_all(&Database::pool()))
                     .await
                     .unwrap_or_default();
 
                 rows.into_iter()
-                    .filter_map(|row| row.trip_headsign.map(|name| (row.trip_id, name)))
+                    .filter_map(|row| row.trip_headsign.map(|name| (row.trip_key, name)))
                     .collect()
             }
         };
@@ -760,7 +771,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             .into_iter()
             .map(|mut v| {
                 v.route_long_name = route_long_names.get(&v.route_id).cloned();
-                v.trip_headsign = trip_headsigns.get(&v.trip_id).cloned();
+                v.trip_headsign = trip_headsigns.get(&trip_key(&v.trip_id)).cloned();
                 if let Some((prev_lat, prev_lng, prev_bearing)) = previous_positions.get(&v.id) {
                     let dist = haversine_distance(*prev_lat, *prev_lng, v.latitude, v.longitude);
                     if dist < 5.0 {
@@ -785,32 +796,35 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
         {
             let schedule_offsets = {
-                let trip_ids = all_stop_times.keys().cloned().collect::<Vec<_>>();
-                if trip_ids.is_empty() {
+                let trip_keys = all_stop_times
+                    .keys()
+                    .map(|t| trip_key(t))
+                    .collect::<Vec<_>>();
+                if trip_keys.is_empty() {
                     HashMap::new()
                 } else {
                     let sql = format!(
                         "
                         SELECT
-                              trip_id
+                              trip_key
                             , stop_sequence
                             , arrival_time_seconds
                         FROM gtfs_stop_times
-                        WHERE   trip_id IN ({})
+                        WHERE   trip_key IN ({})
                             AND arrival_time_seconds IS NOT NULL
                         ",
-                        trip_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ")
+                        trip_keys.iter().map(|_| "?").collect::<Vec<_>>().join(", ")
                     );
                     let mut map = HashMap::new();
                     let mut q = sqlx::query_as::<_, (String, i64, i64)>(AssertSqlSafe(sql));
-                    for id in &trip_ids {
-                        q = q.bind(id);
+                    for key in &trip_keys {
+                        q = q.bind(key);
                     }
                     if let Ok(rows) =
                         Database::logged("schedule_offsets", q.fetch_all(&Database::pool())).await
                     {
-                        for (trip_id, stop_sequence, offset) in rows {
-                            map.insert((trip_id, stop_sequence), offset);
+                        for (trip_key, stop_sequence, offset) in rows {
+                            map.insert((trip_key, stop_sequence), offset);
                         }
                     }
                     map
@@ -819,9 +833,11 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
             let best_base = schedule::compute_base_midnight(all_stop_times.iter().flat_map(
                 |(trip_id, stops)| {
-                    stops.iter().map(|s| {
-                        let offset = schedule_offsets
-                            .get(&(trip_id.clone(), {
+                    let key = trip_key(trip_id);
+                    let offsets = &schedule_offsets;
+                    stops.iter().map(move |s| {
+                        let offset = offsets
+                            .get(&(key.clone(), {
                                 #[allow(clippy::cast_possible_wrap)]
                                 {
                                     s.stop_sequence as i64
@@ -865,6 +881,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 let id = vehicle.id.as_str();
                 let route_id = vehicle.route_id.as_str();
                 let trip_id = vehicle.trip_id.as_str();
+                let trip_key = trip_key(trip_id);
                 let route_long_name = vehicle.route_long_name.as_deref();
                 let trip_headsign = vehicle.trip_headsign.as_deref();
                 let latitude = vehicle.latitude;
@@ -889,6 +906,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                         ( vehicle_id
                         , route_id
                         , trip_id
+                        , trip_key
                         , route_long_name
                         , trip_headsign
                         , latitude
@@ -916,11 +934,13 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                         , ?
                         , ?
                         , ?
+                        , ?
                         )
                     ",
                     id,
                     route_id,
                     trip_id,
+                    trip_key,
                     route_long_name,
                     trip_headsign,
                     latitude,

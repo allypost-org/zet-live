@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                                INSERT INTO\n                                gtfs_trips\n                                    ( trip_id\n                                    , route_id\n                                    , service_id\n                                    , trip_headsign\n                                    , trip_short_name\n                                    , direction_id\n                                    , block_id\n                                    , shape_id\n                                    , wheelchair_boarding\n                                    , bikes_allowed\n                                    , trip_key\n                                    )\n                                VALUES\n                                    ( ?\n                                    , ?\n                                    , ?\n                                    , ?\n                                    , ?\n                                    , ?\n                                    , ?\n                                    , ?\n                                    , ?\n                                    , ?\n                                    , ?\n                                    )\n                                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "2167bd417f40967dce920c427fecca3f39d444632d801aacf7a44000d11cea04"
+}

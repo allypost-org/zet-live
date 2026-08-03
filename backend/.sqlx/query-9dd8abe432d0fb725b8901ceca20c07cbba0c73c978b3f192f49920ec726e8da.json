@@ -156,6 +156,17 @@
             "name": "trip_headsign"
           }
         }
+      },
+      {
+        "name": "trip_key",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "trip_key"
+          }
+        }
       }
     ],
     "parameters": {
@@ -167,6 +178,7 @@
       false,
       false,
       false,
+      true,
       true,
       true,
       true,
