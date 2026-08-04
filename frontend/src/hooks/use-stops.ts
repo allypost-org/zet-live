@@ -243,6 +243,9 @@ export async function fetchFollowingRoute(tripId: string) {
   const shape = result.data;
   const simpleStops = useStore.getState().simpleStops;
   const tripStopTimes = shape.d.stopTimes;
+  const partialNotice = shape.d.partial
+    ? "No published schedule for this trip — showing real-time data only."
+    : null;
 
   useStore.setState({
     displayedStops: buildRouteDisplayedStops(tripStopTimes, simpleStops),
@@ -250,7 +253,7 @@ export async function fetchFollowingRoute(tripId: string) {
   patchVehicleSelection({
     route: shape.d.route,
     tripStopTimes,
-    fetchError: null,
+    fetchError: partialNotice,
   });
 }
 

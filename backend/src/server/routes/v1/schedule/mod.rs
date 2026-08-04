@@ -493,6 +493,9 @@ pub struct TripInfo {
     pub stop_ids: Vec<String>,
     pub route: Vec<(f64, f64)>,
     pub stop_times: Vec<TripStopTime>,
+    /// True when the trip has no static schedule entry and the response is
+    /// built from realtime data only (missing shape + full stop list).
+    pub partial: bool,
 }
 
 struct TripShapeData {
@@ -750,6 +753,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                 stop_ids,
                 route,
                 stop_times,
+                partial: false,
             },
         ),
         headers,
@@ -814,6 +818,7 @@ async fn build_live_only_trip_info(
         stop_ids,
         route: vec![],
         stop_times,
+        partial: true,
     }))
 }
 
