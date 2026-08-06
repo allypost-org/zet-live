@@ -50,6 +50,7 @@ CREATE TABLE gtfs_stops (
   stop_id            TEXT PRIMARY KEY,
   stop_code          TEXT,
   stop_name          TEXT,
+  stop_desc          TEXT,
   tts_stop_name      TEXT,
   latitude           DOUBLE PRECISION,
   longitude          DOUBLE PRECISION,
@@ -145,10 +146,15 @@ CREATE TABLE gtfs_trips (
   shape_id           TEXT,
   wheelchair_boarding SMALLINT,
   bikes_allowed      SMALLINT,
-  trip_key           TEXT
+  trip_key           TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN trip_id ~ '^[^_]+_[^_]_'
+      THEN split_part(trip_id, '_', 1) || '_' || regexp_replace(trip_id, '^[^_]+_[^_]+_', '')
+      ELSE trip_id
+    END
+  ) STORED
 );
 CREATE INDEX idx_gtfs_trips__route_service ON gtfs_trips(route_id, service_id);
-CREATE INDEX idx_gtfs_trips__trip_id       ON gtfs_trips(trip_id);
 CREATE INDEX idx_gtfs_trips__trip_key      ON gtfs_trips(trip_key);
 
 CREATE TABLE gtfs_frequencies (
@@ -208,7 +214,13 @@ CREATE TABLE gtfs_stop_times (
         + split_part(departure_time, ':', 3)::int
       END
     ) STORED,
-  trip_key TEXT
+  trip_key TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN trip_id ~ '^[^_]+_[^_]_'
+      THEN split_part(trip_id, '_', 1) || '_' || regexp_replace(trip_id, '^[^_]+_[^_]+_', '')
+      ELSE trip_id
+    END
+  ) STORED
 );
 CREATE INDEX idx_gtfs_stop_times__trip_id__stop_sequence
   ON gtfs_stop_times(trip_id, stop_sequence);
@@ -216,7 +228,8 @@ CREATE INDEX idx_gtfs_stop_times__stop_id__trip_id
   ON gtfs_stop_times(stop_id, trip_id);
 CREATE INDEX idx_gtfs_stop_times__trip_id__stop_id
   ON gtfs_stop_times(trip_id, stop_id);
-CREATE INDEX idx_gtfs_stop_times__trip_key ON gtfs_stop_times(trip_key);
+CREATE INDEX idx_gtfs_stop_times__trip_key_inc
+  ON gtfs_stop_times(trip_key) INCLUDE (stop_id, stop_sequence, arrival_time_seconds);
 
 -- live_* tables: ephemeral, rewritten every realtime cycle
 CREATE TABLE live_trips (
@@ -363,6 +376,7 @@ CREATE TABLE feedback (
 );
 CREATE INDEX idx_feedback__created_at ON feedback (created_at DESC);
 CREATE INDEX idx_feedback__handled    ON feedback (handled);
+CREATE INDEX idx_feedback__user_id_created_at ON feedback (user_id, created_at DESC);
 
 -- User accounts / auth
 CREATE TABLE users (
