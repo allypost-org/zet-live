@@ -42,6 +42,10 @@ just sqlx-regenerate    # temp DB → run migrations → cargo sqlx prepare --wo
 
 Commit the regenerated `.sqlx/` files alongside your query change.
 
+The `.sqlx/` cache is Postgres-flavored. Regeneration requires a running PG
+instance (`DATABASE_URL=postgres://... just sqlx-regenerate`) — there is no
+in-process fallback.
+
 ## Migrations
 
 - Location: **`backend/migrations/`**.
@@ -49,15 +53,17 @@ Commit the regenerated `.sqlx/` files alongside your query change.
   created via `just migrations-add`.
 - Applied at startup by `sqlx::migrate!("./migrations")` (`src/database/mod.rs`).
 - `just dev-run` runs `sqlx migrate run` first and **requires `DATABASE_URL`
-  to be set** (the recipe errors out otherwise).
+  to be set** to a `postgres://...` URL — a running PostgreSQL instance is
+  required (no `:memory:` / SQLite fallback).
 
 ## Environment (`backend/.env`)
 
 Loaded by `dotenvy::dotenv()` (in `main.rs`) and by the backend justfile
 (`dotenv-load`). Key vars:
 
-- `DATABASE_URL` — defaults to `:memory:`. Dev uses `sqlite:./dev/db/db.sqlite`
-  (gitignored; `backend/dev/`).
+- `DATABASE_URL` — **required**, must be a `postgres://...` URL pointing at a
+  running PostgreSQL instance. (Previously defaulted to `:memory:` with a
+  SQLite dev file at `sqlite:./dev/db/db.sqlite` — both removed.)
 - `LOG_LEVEL` — comma-separated, e.g. `zet_live=trace,query=trace,warn`.
 - `ZI_DATA_FETCH_ENDPOINT`, `ZI_DATA_FETCH_INTERVAL` — GTFS-RT vehicle positions.
 - `ZI_SCHEDULE_FETCH_ENDPOINT`, `ZI_SCHEDULE_FETCH_INTERVAL` — GTFS schedule zip.
@@ -93,8 +99,11 @@ Loaded by `dotenvy::dotenv()` (in `main.rs`) and by the backend justfile
   `frontend-admin/dist` must exist at compile time — run `just build` (or at
   least `just frontend build && just frontend-admin build`) before building the
   backend.
-- **Database**: libsql/SQLite via **sqlx**. Connection pool of 20 with WAL and a
-  tuned PRAGMA block in `src/database/mod.rs`; `PRAGMA optimize` runs hourly.
+- **Database**: PostgreSQL via **sqlx** (the `postgres` feature). Connection
+  pool of 20 in `src/database/mod.rs`. Migrations are applied at startup by
+  `sqlx::migrate!("./migrations")`. No PRAGMA/optimize step (PG autovacuum
+  handles maintenance). Timestamps are `timestamptz`, decoded via the `time`
+  crate and bridged to `jiff` via `src/database/time.rs`.
 - **Protobuf**: GTFS-RT proto in `backend/protobuf/`. `build.rs` compiles it via
   `prost-build` → generated `_gtfs_realtime.rs` in `OUT_DIR` (adds serde derives).
 - **Build info**: `build-info` / `build-info-build` inject version, build date,

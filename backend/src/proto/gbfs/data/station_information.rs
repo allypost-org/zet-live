@@ -49,6 +49,8 @@ impl GbfsFeed for Feed {
                 Some(value) => Some(serde_json::to_string(value)?),
                 None => None,
             };
+            #[allow(clippy::cast_possible_truncation)]
+            let capacity = station.capacity.map(|c| c as i32);
 
             sqlx::query!(
                 "
@@ -65,7 +67,7 @@ impl GbfsFeed for Feed {
                             , rental_uris
                             )
                         VALUES
-                            ( ?, ?, ?, ?, ?, ?, ?, ?, ? )
+                            ( $1, $2, $3, $4, $5, $6, $7, $8, $9 )
                         ",
                 station.station_id,
                 station.name,
@@ -73,8 +75,8 @@ impl GbfsFeed for Feed {
                 station.lat,
                 station.lon,
                 station.region_id,
-                station.capacity,
-                i64::from(station.is_virtual_station),
+                capacity,
+                station.is_virtual_station,
                 rental_uris,
             )
             .execute(&mut *tx)

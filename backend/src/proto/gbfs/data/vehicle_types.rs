@@ -43,6 +43,8 @@ impl GbfsFeed for Feed {
             .await?;
 
         for vt in &data.vehicle_types {
+            #[allow(clippy::cast_possible_truncation)]
+            let rider_capacity = vt.rider_capacity.map(|v| v as i32);
             sqlx::query!(
                 "
                 INSERT INTO
@@ -56,20 +58,20 @@ impl GbfsFeed for Feed {
                     , description
                     )
                 VALUES
-                    ( ?
-                    , ?
-                    , ?
-                    , ?
-                    , ?
-                    , ?
-                    , ?
+                    ( $1
+                    , $2
+                    , $3
+                    , $4
+                    , $5
+                    , $6
+                    , $7
                     )
                 ",
                 vt.vehicle_type_id,
                 vt.name,
                 vt.form_factor,
                 vt.propulsion_type,
-                vt.rider_capacity,
+                rider_capacity,
                 vt.vehicle_image,
                 vt.description,
             )

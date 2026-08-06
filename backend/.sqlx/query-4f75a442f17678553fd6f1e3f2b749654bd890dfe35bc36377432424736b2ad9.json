@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT lst.stop_id, lst.stop_sequence, lst.arrival_time, s.stop_name\n            FROM live_trip_stop_times lst\n            LEFT JOIN gtfs_stops s ON s.stop_id = lst.stop_id\n            WHERE lst.trip_id = $1\n            ORDER BY lst.stop_sequence\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "stop_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_trip_stop_times",
+            "name": "stop_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "stop_sequence",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_trip_stop_times",
+            "name": "stop_sequence"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "arrival_time",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_trip_stop_times",
+            "name": "arrival_time"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "stop_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "stop_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "4f75a442f17678553fd6f1e3f2b749654bd890dfe35bc36377432424736b2ad9"
+}

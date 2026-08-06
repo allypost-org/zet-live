@@ -56,3 +56,9 @@ No tests exist in either the frontend or the backend (yet).
   runners, pushes to Docker Hub (`allypost/zet-live`), notifies Watchtower. Uses
   S3 for build cache.
 - Frontend env vars for production are set via `frontend/.env.docker` in CI.
+- **Database dependency:** the runtime image no longer has an in-process DB.
+  The container requires `DATABASE_URL=postgres://...` at runtime (pointing at
+  an external PostgreSQL instance). The `scratch` runner ships no DB. Cutover
+  from the previous SQLite-on-a-volume setup requires a one-shot data
+  migration per
+  `docs/superpowers/specs/2026-08-03-move-to-postgres-design.md` §15.

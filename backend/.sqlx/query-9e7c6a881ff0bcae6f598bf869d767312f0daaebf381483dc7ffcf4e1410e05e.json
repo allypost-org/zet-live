@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO link_tickets\n            ( token_hash\n            , user_id\n            , expires_at\n            , created_at\n            )\n        VALUES\n            ( $1\n            , $2\n            , $3\n            , $4\n            )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9e7c6a881ff0bcae6f598bf869d767312f0daaebf381483dc7ffcf4e1410e05e"
+}

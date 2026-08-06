@@ -60,12 +60,8 @@ pub fn build_auth_url(
 }
 
 pub async fn create_state(state: &str, flow: &OAuthState) -> Result<(), sqlx::Error> {
-    let now = jiff::Timestamp::now();
-    let expires = now
-        + jiff::Span::new()
-            .try_seconds(600)
-            .expect("600s is a valid span");
-    let link_i = i64::from(flow.link);
+    let now = crate::database::time::now();
+    let expires = now.saturating_add(time::Duration::seconds(600));
 
     sqlx::query!(
         "
@@ -80,24 +76,24 @@ pub async fn create_state(state: &str, flow: &OAuthState) -> Result<(), sqlx::Er
             , expires_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
+            , $4
+            , $5
+            , $6
+            , $7
+            , $8
             )
         ",
         state,
         flow.provider,
         flow.pkce_verifier,
-        link_i,
+        flow.link,
         flow.origin,
         flow.user_id,
-        now.to_string(),
-        expires.to_string(),
+        now,
+        expires,
     )
     .execute(&Database::pool())
     .await?;
@@ -106,12 +102,12 @@ pub async fn create_state(state: &str, flow: &OAuthState) -> Result<(), sqlx::Er
 }
 
 pub async fn consume_state(state: &str) -> Result<Option<OAuthState>, sqlx::Error> {
-    let now = jiff::Timestamp::now().to_string();
+    let now = crate::database::time::now();
 
     let row = sqlx::query!(
         "
         DELETE FROM oauth_states
-        WHERE state = ? AND expires_at > ?
+        WHERE state = $1 AND expires_at > $2
         RETURNING provider, pkce_verifier, link, origin, user_id
         ",
         state,
@@ -123,7 +119,7 @@ pub async fn consume_state(state: &str) -> Result<Option<OAuthState>, sqlx::Erro
     Ok(row.map(|r| OAuthState {
         provider: r.provider,
         pkce_verifier: r.pkce_verifier,
-        link: r.link != 0,
+        link: r.link,
         origin: r.origin,
         user_id: r.user_id,
     }))

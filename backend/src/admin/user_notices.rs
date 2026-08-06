@@ -18,11 +18,11 @@ pub struct UserNoticeRow {
     pub user_display_name: Option<String>,
     pub text: String,
     pub severity: NoticeSeverity,
-    pub created_at: String,
+    pub created_at: jiff::Timestamp,
 }
 
-fn now_iso() -> String {
-    jiff::Timestamp::now().to_string()
+fn now_db() -> time::OffsetDateTime {
+    crate::database::time::now()
 }
 
 fn new_id() -> String {
@@ -53,7 +53,7 @@ pub async fn for_user(user_id: &str) -> Vec<GlobalNotice> {
                text          AS \"text!: String\",
                severity      AS \"severity!: String\"
         FROM user_notices
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY created_at
         ",
         user_id,
@@ -81,7 +81,7 @@ pub async fn list_all() -> Vec<UserNoticeRow> {
                u.display_name,
                n.text            AS \"text!: String\",
                n.severity        AS \"severity!: String\",
-               n.created_at      AS \"created_at!: String\"
+               n.created_at      AS \"created_at!: time::OffsetDateTime\"
         FROM user_notices n
         LEFT JOIN users u ON u.id = n.user_id
         ORDER BY n.created_at DESC
@@ -99,7 +99,7 @@ pub async fn list_all() -> Vec<UserNoticeRow> {
             user_display_name: r.display_name,
             text: r.text,
             severity: parse_severity(&r.severity),
-            created_at: r.created_at,
+            created_at: crate::database::time::to_jiff(r.created_at),
         })
         .collect()
 }
@@ -111,14 +111,14 @@ pub async fn create(
     severity: NoticeSeverity,
 ) -> Result<GlobalNotice, sqlx::Error> {
     let id = new_id();
-    let now = now_iso();
+    let now = now_db();
     let sev = severity_str(severity);
     sqlx::query!(
         "
         INSERT INTO user_notices
             ( id, user_id, text, severity, created_at )
         VALUES
-            ( ?, ?, ?, ?, ? )
+            ( $1, $2, $3, $4, $5 )
         ",
         id,
         user_id,
@@ -140,7 +140,7 @@ pub async fn create(
 /// caller can push the updated set to that account), if a row was removed.
 pub async fn delete(id: &str) -> Result<Option<String>, sqlx::Error> {
     let row = sqlx::query!(
-        "DELETE FROM user_notices WHERE id = ? RETURNING user_id AS \"user_id!: String\"",
+        "DELETE FROM user_notices WHERE id = $1 RETURNING user_id AS \"user_id!: String\"",
         id,
     )
     .fetch_optional(&Database::pool())

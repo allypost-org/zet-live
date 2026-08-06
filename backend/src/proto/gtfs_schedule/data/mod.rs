@@ -1,21 +1,18 @@
-use std::time::Instant;
+use std::{io::Read, time::Instant};
 
-use serde::de::DeserializeOwned;
 use sqlx::AssertSqlSafe;
-use tracing::{Instrument, debug, trace, warn};
+use tracing::{debug, trace, warn};
 
 use crate::database::Database;
 
 pub mod route;
 pub mod shape;
 pub mod stop;
-pub mod stop_time;
 pub mod trip;
 
 pub use route::*;
 pub use shape::*;
 pub use stop::*;
-pub use stop_time::*;
 pub use trip::*;
 
 #[derive(Debug)]
@@ -25,398 +22,279 @@ impl GtfsSchedule {
     pub async fn read_from_zip_bytes(zip_bytes: prost::bytes::Bytes) -> Result<(), FileDataError> {
         debug!("Reading GTFS schedule from zip bytes");
 
-        let (query_tx, mut query_rx) = tokio::sync::mpsc::unbounded_channel::<BulkInsert>();
+        let mut tx = Database::pool().begin().await?;
+        let start = Instant::now();
 
-        let queries_fut = tokio::task::spawn(
-            async move {
-                let mut tx = Database::pool().begin().await?;
-                let start = Instant::now();
-                debug!("Starting query execution");
-                let mut i = 0;
-                let mut last_checkpoint = Instant::now();
-                while let Some(bulk_insert) = query_rx.recv().await {
-                    const LOG_EVERY_I: usize = 10_000;
+        copy_csv(
+            &mut tx,
+            &zip_bytes,
+            FileSpec {
+                file: "routes.txt",
+                table: "gtfs_routes",
+                rebuild_indexes_around_copy: false,
+                columns: &[
+                    ("route_id", "route_id"),
+                    ("agency_id", "agency_id"),
+                    ("route_short_name", "route_short_name"),
+                    ("route_long_name", "route_long_name"),
+                    ("route_desc", "route_desc"),
+                    ("route_type", "route_type"),
+                    ("route_url", "route_url"),
+                    ("route_color", "route_color"),
+                    ("route_text_color", "route_text_color"),
+                ],
+            },
+        )
+        .await?;
 
-                    let res = match bulk_insert {
-                        BulkInsert::DeleteAll(table) => {
-                            sqlx::query(AssertSqlSafe(format!("DELETE FROM {table}")))
-                                .execute(&mut *tx)
-                                .await
-                                .map_err(|e| {
-                                    anyhow::anyhow!(e)
-                                        .context(format!("Failed to delete from {}", table))
-                                })
-                        }
-                        BulkInsert::Route(r) => {
-                            let route_type = r.route_type.map(|t| t as i32);
-                            let url = r.url.map(|u| u.to_string());
-                            sqlx::query!(
-                                "
-                                INSERT INTO
-                                gtfs_routes
-                                    ( route_id
-                                    , agency_id
-                                    , route_short_name
-                                    , route_long_name
-                                    , route_url
-                                    , route_desc
-                                    , route_type
-                                    , route_color
-                                    , route_text_color
-                                    )
-                                VALUES
-                                    ( ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    )
-                                ",
-                                r.id,
-                                r.agency_id,
-                                r.short_name,
-                                r.long_name,
-                                url,
-                                r.desc,
-                                route_type,
-                                r.color,
-                                r.text_color,
-                            )
-                            .execute(&mut *tx)
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!(e).context("Failed to insert into gtfs_routes")
-                            })
-                        }
-                        BulkInsert::Shape(s) => sqlx::query!(
-                            "
-                            INSERT INTO
-                            gtfs_shapes
-                                ( shape_id
-                                , shape_pt_lat
-                                , shape_pt_lon
-                                , shape_pt_sequence
-                                , shape_dist_traveled
-                                ) VALUES
-                                ( ?
-                                , ?
-                                , ?
-                                , ?
-                                , ?
-                                )
-                            ",
-                            s.id,
-                            s.latitude,
-                            s.longitude,
-                            s.sequence,
-                            s.distance,
-                        )
-                        .execute(&mut *tx)
-                        .await
-                        .map_err(|e| {
-                            anyhow::anyhow!(e).context("Failed to insert into gtfs_shapes")
-                        }),
-                        BulkInsert::Stop(s) => {
-                            let location_type = s.location_type.map(|l| l as i32);
-                            let wheelchair_boarding = s.wheelchair_boarding as i32;
-                            let url = s.url.map(|u| u.to_string());
-                            sqlx::query!(
-                                "
-                                INSERT INTO
-                                gtfs_stops
-                                    ( stop_id
-                                    , stop_code
-                                    , stop_name
-                                    , tts_stop_name
-                                    , latitude
-                                    , longitude
-                                    , zone_id
-                                    , stop_url
-                                    , location_type
-                                    , parent_station
-                                    , stop_timezone
-                                    , wheelchair_boarding
-                                    , level_id
-                                    , platform_code
-                                    )
-                                VALUES
-                                    ( ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    )
-                                ",
-                                s.id,
-                                s.code,
-                                s.name,
-                                s.tts_name,
-                                s.latitude,
-                                s.longitude,
-                                s.zone_id,
-                                url,
-                                location_type,
-                                s.parent_station,
-                                s.timezone,
-                                wheelchair_boarding,
-                                s.level_id,
-                                s.platform_code,
-                            )
-                            .execute(&mut *tx)
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!(e).context("Failed to insert into gtfs_stops")
-                            })
-                        }
-                        BulkInsert::Trip(t) => {
-                            let direction_id = t.direction_id.map(|d| d as i32);
-                            let wheelchair_boarding = t.wheelchair_boarding as i32;
-                            let bikes_allowed = t.bikes_allowed as i32;
-                            let key = trip_key(&t.id);
-                            sqlx::query!(
-                                "
-                                INSERT INTO
-                                gtfs_trips
-                                    ( trip_id
-                                    , route_id
-                                    , service_id
-                                    , trip_headsign
-                                    , trip_short_name
-                                    , direction_id
-                                    , block_id
-                                    , shape_id
-                                    , wheelchair_boarding
-                                    , bikes_allowed
-                                    , trip_key
-                                    )
-                                VALUES
-                                    ( ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    , ?
-                                    )
-                                ",
-                                t.id,
-                                t.route_id,
-                                t.service_id,
-                                t.headsign,
-                                t.short_name,
-                                direction_id,
-                                t.block_id,
-                                t.shape_id,
-                                wheelchair_boarding,
-                                bikes_allowed,
-                                key,
-                            )
-                            .execute(&mut *tx)
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!(e).context("Failed to insert into gtfs_trips")
-                            })
-                        }
-                        BulkInsert::StopTime(st) => {
-                            let key = trip_key(&st.trip_id);
-                            sqlx::query!(
-                                "
-                            INSERT INTO
-                            gtfs_stop_times
-                                ( trip_id
-                                , stop_id
-                                , stop_sequence
-                                , arrival_time
-                                , departure_time
-                                , trip_key
-                                )
-                            VALUES
-                                ( ?
-                                , ?
-                                , ?
-                                , ?
-                                , ?
-                                , ?
-                                )
-                            ",
-                                st.trip_id,
-                                st.stop_id,
-                                st.stop_sequence,
-                                st.arrival_time,
-                                st.departure_time,
-                                key,
-                            )
-                            .execute(&mut *tx)
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!(e).context("Failed to insert into gtfs_stop_times")
-                            })
-                        }
-                    };
-                    if let Err(e) = res {
-                        warn!(error = ?e, "Failed to execute query");
-                        panic!("{}", e);
-                    }
-                    if i % LOG_EVERY_I == 0 {
-                        let took = last_checkpoint.elapsed();
-                        #[allow(clippy::cast_precision_loss)]
-                        let per_sec = LOG_EVERY_I as f64 / took.as_secs_f64();
-                        trace!(?i, ?took, ?per_sec, "processed part of the feed");
-                        last_checkpoint = Instant::now();
-                    }
-                    i += 1;
-                }
-                {
-                    let took = start.elapsed();
-                    #[allow(clippy::cast_precision_loss)]
-                    let per_sec = i as f64 / start.elapsed().as_secs_f64();
-                    debug!(
-                        count = i,
-                        ?took,
-                        ?per_sec,
-                        "Sent all queries, committing transaction"
-                    );
-                }
-                let start = Instant::now();
-                tx.commit().await?;
-                debug!(took = ?start.elapsed(), "Transaction committed");
+        copy_csv(
+            &mut tx,
+            &zip_bytes,
+            FileSpec {
+                file: "shapes.txt",
+                table: "gtfs_shapes",
+                rebuild_indexes_around_copy: false,
+                columns: &[
+                    ("shape_id", "shape_id"),
+                    ("shape_pt_lat", "shape_pt_lat"),
+                    ("shape_pt_lon", "shape_pt_lon"),
+                    ("shape_pt_sequence", "shape_pt_sequence"),
+                    ("shape_dist_traveled", "shape_dist_traveled"),
+                ],
+            },
+        )
+        .await?;
 
-                debug!("Vacuuming database");
-                let start = Instant::now();
-                if let Err(e) = sqlx::query!("VACUUM").execute(&Database::pool()).await {
-                    warn!(?e, "Failed to vacuum database");
-                } else {
-                    debug!(took = ?start.elapsed(), "Database vacuumed");
-                }
-                Ok::<_, FileDataError>(())
-            }
-            .instrument(tracing::Span::current()),
-        );
+        copy_csv(
+            &mut tx,
+            &zip_bytes,
+            FileSpec {
+                file: "stops.txt",
+                table: "gtfs_stops",
+                rebuild_indexes_around_copy: false,
+                columns: &[
+                    ("stop_id", "stop_id"),
+                    ("stop_code", "stop_code"),
+                    ("stop_name", "stop_name"),
+                    ("stop_desc", "stop_desc"),
+                    ("stop_lat", "latitude"),
+                    ("stop_lon", "longitude"),
+                    ("zone_id", "zone_id"),
+                    ("stop_url", "stop_url"),
+                    ("location_type", "location_type"),
+                    ("parent_station", "parent_station"),
+                ],
+            },
+        )
+        .await?;
 
-        let res = tokio::task::spawn_blocking(move || {
-            debug!("Starting csv decoding");
+        copy_csv(
+            &mut tx,
+            &zip_bytes,
+            FileSpec {
+                file: "trips.txt",
+                table: "gtfs_trips",
+                rebuild_indexes_around_copy: false,
+                columns: &[
+                    ("route_id", "route_id"),
+                    ("service_id", "service_id"),
+                    ("trip_id", "trip_id"),
+                    ("trip_headsign", "trip_headsign"),
+                    ("trip_short_name", "trip_short_name"),
+                    ("direction_id", "direction_id"),
+                    ("block_id", "block_id"),
+                    ("shape_id", "shape_id"),
+                ],
+            },
+        )
+        .await?;
 
-            let start_task = Instant::now();
-            let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes))
-                .map_err(FileDataError::Zip)?;
-            trace!(took = ?start_task.elapsed(), "Zip created");
+        copy_csv(
+            &mut tx,
+            &zip_bytes,
+            FileSpec {
+                file: "stop_times.txt",
+                table: "gtfs_stop_times",
+                rebuild_indexes_around_copy: true,
+                columns: &[
+                    ("trip_id", "trip_id"),
+                    ("arrival_time", "arrival_time"),
+                    ("departure_time", "departure_time"),
+                    ("stop_id", "stop_id"),
+                    ("stop_sequence", "stop_sequence"),
+                    ("stop_headsign", "stop_headsign"),
+                    ("pickup_type", "pickup_type"),
+                    ("drop_off_type", "drop_off_type"),
+                    ("shape_dist_traveled", "shape_dist_traveled"),
+                ],
+            },
+        )
+        .await?;
 
-            {
-                let start = Instant::now();
-                Route::read_from_zip_notif(&mut zip, &query_tx)?;
-                trace!(took = ?start.elapsed(), "Routes updated");
-            }
+        tx.commit().await?;
+        debug!(took = ?start.elapsed(), "Schedule loaded via COPY, analyzing");
 
-            {
-                let start = Instant::now();
-                Shape::read_from_zip_notif(&mut zip, &query_tx)?;
-                trace!(took = ?start.elapsed(), "Shapes updated");
-            }
-
-            {
-                let start = Instant::now();
-                Stop::read_from_zip_notif(&mut zip, &query_tx)?;
-                trace!(took = ?start.elapsed(), "Stops updated");
-            }
-
-            {
-                let start = Instant::now();
-                Trip::read_from_zip_notif(&mut zip, &query_tx)?;
-                trace!(took = ?start.elapsed(), "Trips updated");
-            }
-
-            {
-                let start = Instant::now();
-                StopTime::read_from_zip_notif(&mut zip, &query_tx)?;
-                trace!(took = ?start.elapsed(), "Stop times updated");
-            }
-
-            drop(query_tx);
-
-            debug!(took = ?start_task.elapsed(), "CSV data read");
-
-            Ok::<_, FileDataError>(())
-        });
-
-        let (parsers, queries) = tokio::join!(res, queries_fut);
-
-        parsers??;
-        queries??;
+        let analyze_start = Instant::now();
+        if let Err(e) = sqlx::query!("ANALYZE").execute(&Database::pool()).await {
+            warn!(?e, "Failed to analyze database");
+        } else {
+            debug!(took = ?analyze_start.elapsed(), "Database analyzed");
+        }
 
         debug!("Database update complete");
-
         Ok(())
     }
 }
 
-pub enum BulkInsert {
-    DeleteAll(&'static str),
-    Route(Route),
-    Shape(Shape),
-    Stop(Stop),
-    Trip(Trip),
-    StopTime(StopTime),
+struct FileSpec {
+    file: &'static str,
+    table: &'static str,
+    /// Drop non-PK/non-unique indexes before COPY and recreate them after.
+    /// Bulk `CREATE INDEX` is far cheaper than per-row maintenance during COPY
+    /// — worth it on large tables (~1.7M-row `gtfs_stop_times` measured
+    /// 15.7 s → 6.2 s), negligible benefit on small ones.
+    rebuild_indexes_around_copy: bool,
+    /// `(csv_column, table_column)` pairs covering every column the CSV may
+    /// contain. Order is irrelevant — the CSV header drives the mapping.
+    columns: &'static [(&'static str, &'static str)],
 }
 
-pub trait FileData: Sized + DeserializeOwned {
-    fn file_name() -> &'static str;
+async fn copy_csv(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    zip_bytes: &prost::bytes::Bytes,
+    spec: FileSpec,
+) -> Result<(), FileDataError> {
+    let file_start = Instant::now();
 
-    fn table_name() -> &'static str;
+    let index_defs = if spec.rebuild_indexes_around_copy {
+        Some(capture_and_drop_indexes(tx, spec.table).await?)
+    } else {
+        None
+    };
 
-    fn into_bulk_insert(self) -> BulkInsert;
+    let zip_bytes = zip_bytes.clone();
+    let file = spec.file.to_string();
+    let (csv_header, data) = tokio::task::spawn_blocking(move || -> Result<_, FileDataError> {
+        let mut zip =
+            zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).map_err(FileDataError::Zip)?;
+        let mut entry = zip.by_name(&file).map_err(FileDataError::Zip)?;
+        let mut buf = Vec::new();
+        entry.read_to_end(&mut buf)?;
+        drop(entry);
 
-    fn read_from_zip_notif(
-        zip: &mut zip::ZipArchive<std::io::Cursor<prost::bytes::Bytes>>,
-        tx: &tokio::sync::mpsc::UnboundedSender<BulkInsert>,
-    ) -> Result<(), FileDataError> {
-        let zip_file = zip.by_name(Self::file_name()).map_err(FileDataError::Zip)?;
+        let nl = buf
+            .iter()
+            .position(|&b| b == b'\n')
+            .ok_or_else(|| FileDataError::ColumnMapping("no header line".into()))?;
+        let header = std::str::from_utf8(&buf[..nl])
+            .map_err(|e| FileDataError::ColumnMapping(format!("non-utf8 header: {e}")))?
+            .to_string();
+        let data = buf[nl + 1..].to_vec();
+        Ok((header, data))
+    })
+    .await??;
 
-        trace!(file = ?zip_file.name(), "Reading file");
+    let cols_csv = csv_header
+        .split(',')
+        .map(|h| h.trim().trim_matches('\u{feff}'))
+        .map(|csv_col| {
+            spec.columns
+                .iter()
+                .find(|(c, _)| *c == csv_col)
+                .map(|(_, t)| *t)
+                .ok_or_else(|| FileDataError::ColumnMapping(format!("unmapped column: {csv_col}")))
+        })
+        .try_fold(String::new(), |mut acc, col| {
+            match col {
+                Ok(col) => {
+                    acc.push_str(col);
+                    acc.push_str(", ");
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
 
-        let its = csv::ReaderBuilder::new()
-            .from_reader(zip_file)
-            .into_deserialize::<Self>()
-            .filter_map(std::result::Result::ok);
+            Ok(acc)
+        })?;
 
-        let mut i = 0;
-        let _ = tx.send(BulkInsert::DeleteAll(Self::table_name()));
-        for it in its {
-            let _ = tx.send(it.into_bulk_insert());
-            i += 1;
+    let cols_csv = cols_csv.trim_end_matches(", ");
+
+    sqlx::query(AssertSqlSafe(format!("DELETE FROM {}", spec.table)))
+        .execute(&mut **tx)
+        .await?;
+
+    let copy_sql = format!(
+        "COPY {} ({}) FROM STDIN WITH (FORMAT csv)",
+        spec.table, cols_csv
+    );
+    let mut copy = tx.copy_in_raw(&copy_sql).await?;
+    copy.send(data).await?;
+    let rows = copy.finish().await?;
+
+    if let Some(defs) = &index_defs {
+        let rebuild_start = Instant::now();
+        for def in defs {
+            sqlx::query(AssertSqlSafe(def.clone()))
+                .execute(&mut **tx)
+                .await?;
         }
-        debug!(count = i, table = ?Self::table_name(), "Parsed rows and sent queries");
-
-        Ok(())
+        trace!(
+            table = spec.table,
+            index_count = defs.len(),
+            took = ?rebuild_start.elapsed(),
+            "indexes rebuilt after COPY"
+        );
     }
+
+    trace!(table = spec.table, rows, took = ?file_start.elapsed(), "COPY loaded");
+    Ok(())
+}
+
+async fn capture_and_drop_indexes(
+    tx: &mut sqlx::PgConnection,
+    table: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let rows = sqlx::query!(
+        "SELECT c.relname, i.indexdef
+         FROM pg_indexes i
+         JOIN pg_class c ON c.relname = i.indexname
+         JOIN pg_index x ON x.indexrelid = c.oid
+         WHERE i.schemaname = 'public'
+           AND i.tablename = $1
+           AND NOT x.indisprimary
+           AND NOT x.indisunique",
+        table,
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut defs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let name = row.relname;
+        let def = row.indexdef.ok_or(sqlx::Error::RowNotFound)?;
+        sqlx::query(AssertSqlSafe(format!("DROP INDEX {name}")))
+            .execute(&mut *tx)
+            .await?;
+        defs.push(def);
+    }
+    Ok(defs)
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum FileDataError {
     #[error("Failed to read from zip: {0:?}")]
     Zip(#[from] zip::result::ZipError),
+    #[error("Failed to read: {0}")]
+    Io(#[from] std::io::Error),
     #[error("Failed to parse: {0:?}")]
     Parse(#[from] csv::Error),
     #[error("Failed to join blocking task: {0:?}")]
     JoinBlocking(#[from] tokio::task::JoinError),
     #[error("Failed to execute query: {0:?}")]
     DatabaseInsert(#[from] sqlx::Error),
+    #[error("Column mapping failed: {0}")]
+    ColumnMapping(String),
 }
 
 /// Normalize a GTFS `trip_id` into a stable key by dropping its service-id
@@ -437,8 +315,10 @@ pub enum FileDataError {
 /// Inputs with fewer than two `_`-separated segments (no service-id component
 /// to strip) are returned unchanged.
 ///
-/// The SQL counterpart used to backfill existing rows lives in migration
-/// `20260803110000_add_trip_key.up.sql` and must stay in sync with this.
+/// The static schedule tables compute this via a GENERATED column (migration
+/// `20260803182207`); this function remains the source of truth for the
+/// realtime tables (`live_trips`, `live_vehicles`) which are still populated
+/// per-row from the GTFS-RT feed.
 pub fn trip_key(trip_id: &str) -> String {
     let Some(first_us) = trip_id.find('_') else {
         return trip_id.to_string();

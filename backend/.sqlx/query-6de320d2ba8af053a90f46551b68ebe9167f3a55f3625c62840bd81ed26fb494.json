@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO data_deletion_requests\n            ( confirmation_code\n            , provider\n            , provider_subject\n            , user_id\n            , status\n            , created_at\n            )\n        VALUES\n            ( $1\n            , $2\n            , $3\n            , $4\n            , $5\n            , $6\n            )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6de320d2ba8af053a90f46551b68ebe9167f3a55f3625c62840bd81ed26fb494"
+}

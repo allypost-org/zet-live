@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE feedback SET dismissed = true, handled = false WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1177f17320c58ecc9ac2c0a3bc09f7725abdc6a7cb8bfd1c676ce22d4b577d37"
+}

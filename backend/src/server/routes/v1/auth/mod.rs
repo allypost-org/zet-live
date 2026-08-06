@@ -475,7 +475,7 @@ pub async fn facebook_deletion(Form(form): Form<FacebookDeletionForm>) -> Respon
     };
 
     let found_user_id = match sqlx::query_scalar!(
-        "SELECT user_id FROM user_oauth_identities WHERE provider = ? AND provider_subject = ?",
+        "SELECT user_id FROM user_oauth_identities WHERE provider = $1 AND provider_subject = $2",
         "facebook",
         payload.user_id,
     )
@@ -525,12 +525,12 @@ pub async fn facebook_deletion(Form(form): Form<FacebookDeletionForm>) -> Respon
             , created_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
+            , $4
+            , $5
+            , $6
             )
         ",
         code,
@@ -538,7 +538,7 @@ pub async fn facebook_deletion(Form(form): Form<FacebookDeletionForm>) -> Respon
         payload.user_id,
         found_user_id,
         status,
-        jiff::Timestamp::now().to_string(),
+        crate::database::time::now(),
     )
     .execute(&Database::pool())
     .await
@@ -576,7 +576,8 @@ pub async fn facebook_deletion(Form(form): Form<FacebookDeletionForm>) -> Respon
 /// confirmation flow via the `url` returned by [`facebook_deletion`]).
 pub async fn facebook_deletion_status(Path(code): Path<String>) -> Response {
     let row = match sqlx::query!(
-        "SELECT status, created_at FROM data_deletion_requests WHERE confirmation_code = ?",
+        "SELECT status, created_at AS \"created_at!: time::OffsetDateTime\" FROM \
+         data_deletion_requests WHERE confirmation_code = $1",
         code,
     )
     .fetch_optional(&Database::pool())
@@ -593,25 +594,23 @@ pub async fn facebook_deletion_status(Path(code): Path<String>) -> Response {
         return ApiError::not_found("Invalid confirmation code").into_response();
     };
 
+    let received = crate::database::time::to_jiff(row.created_at).to_string();
     let message = match row.status.as_str() {
         "completed" => format!(
             "Your data deletion request (confirmation code {code}) was received on {received} and \
              has been completed.",
             code = code,
-            received = row.created_at,
         ),
         "unknown_user" => format!(
             "Your data deletion request (confirmation code {code}) was received on {received}. No \
              account was associated with this Facebook identity, so no further action was \
              required.",
             code = code,
-            received = row.created_at,
         ),
         other => format!(
             "Your data deletion request (confirmation code {code}) was received on {received}. \
              Current status: {status}.",
             code = code,
-            received = row.created_at,
             status = other,
         ),
     };

@@ -90,42 +90,25 @@ fmt:
 sqlx-regenerate:
     #!/usr/bin/env bash
     set -euo pipefail
-    TEMP_DIR="$(mktemp -d)"
-    TEMP_DB="$TEMP_DIR/zet-live.db"
-    export DATABASE_URL="sqlite://$TEMP_DB"
+    if [ -z "$DATABASE_URL" ]; then
+      echo "DATABASE_URL must be set to a postgres:// URL"; exit 1;
+    fi
     export SQLX_OFFLINE=""
-    touch "$TEMP_DB"
-    trap "rm -rf '$TEMP_DIR'" EXIT
-    cargo sqlx database create
-    cargo sqlx migrate run
+    sqlx database drop -y
+    sqlx database create
+    sqlx migrate run
     cargo sqlx prepare --workspace
 
-migrations-run: _migrations-ensure-db
-    sqlx migrate run \
-
-migrations-list: _migrations-ensure-db
-    sqlx migrate info \
-
-_migrations-ensure-db:
+migrations-run:
     #!/usr/bin/env bash
+    set -euo pipefail
     if [ -z "$DATABASE_URL" ]; then
-      echo "DATABASE_URL is not set";
-      exit 1;
+      echo "DATABASE_URL is not set"; exit 1;
     fi
-    if echo "$DATABASE_URL" | grep -v '^sqlite[0-9]*:'; then
-      exit 0;
-    fi
-    url="$(echo "$DATABASE_URL" | sed -re 's,^(.*:(//)?)(.*),\3,g')"
-    if [ -z "$url" ]; then
-      echo "Could not extract path from database URL: $DATABASE_URL";
-      exit 1;
-    fi
-    if [ -f "$url" ]; then
-      exit 0;
-    fi
-    echo "Database file does not exist, creating it: $url";
-    mkdir -p "$(dirname "$url")"
-    touch "$url"
+    sqlx migrate run
+
+migrations-list:
+    sqlx migrate info
 
 migrations-add $name="":
     name="{{ name }}"; \

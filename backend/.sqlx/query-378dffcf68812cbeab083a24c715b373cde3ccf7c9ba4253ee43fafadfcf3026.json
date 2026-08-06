@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO admin_settings\n            ( name\n            , value\n            , updated_at\n            )\n        VALUES\n            ( $1\n            , $2\n            , $3\n            )\n         ON CONFLICT(name)\n         DO UPDATE SET\n              value = excluded.value\n            , updated_at = excluded.updated_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "378dffcf68812cbeab083a24c715b373cde3ccf7c9ba4253ee43fafadfcf3026"
+}

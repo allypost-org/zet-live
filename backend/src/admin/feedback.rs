@@ -27,12 +27,12 @@ pub struct FeedbackRow {
     pub meta_lang: Option<String>,
     pub meta_build: Option<String>,
     pub ip: String,
-    pub created_at: String,
+    pub created_at: jiff::Timestamp,
     pub handled: bool,
     pub dismissed: bool,
     pub status: String,
     pub reply: Option<String>,
-    pub replied_at: Option<String>,
+    pub replied_at: Option<jiff::Timestamp>,
     pub user_id: Option<String>,
     pub user_email: Option<String>,
     pub user_display_name: Option<String>,
@@ -58,12 +58,12 @@ macro_rules! map_row {
             meta_lang: $r.meta_lang,
             meta_build: $r.meta_build,
             ip: $r.ip,
-            created_at: $r.created_at,
-            handled: $r.handled != 0,
-            dismissed: $r.dismissed != 0,
-            status: status_of($r.reply.as_deref(), $r.dismissed != 0, $r.handled != 0).to_string(),
+            created_at: crate::database::time::to_jiff($r.created_at),
+            handled: $r.handled,
+            dismissed: $r.dismissed,
+            status: status_of($r.reply.as_deref(), $r.dismissed, $r.handled).to_string(),
             reply: $r.reply,
-            replied_at: $r.replied_at,
+            replied_at: $r.replied_at.map(crate::database::time::to_jiff),
             user_id: $r.user_id,
             user_email: $r.user_email,
             user_display_name: $r.user_display_name,
@@ -87,17 +87,17 @@ pub async fn list(filter: &FeedbackFilter) -> Result<Vec<FeedbackRow>, sqlx::Err
                 , f.meta_lang
                 , f.meta_build
                 , f.ip            AS \"ip!\"
-                , f.created_at    AS \"created_at!\"
+                , f.created_at    AS \"created_at!: time::OffsetDateTime\"
                 , f.handled       AS \"handled!\"
                 , f.dismissed     AS \"dismissed!\"
                 , f.reply
-                , f.replied_at
+                , f.replied_at   AS \"replied_at: time::OffsetDateTime\"
                 , f.user_id
                 , u.email         AS \"user_email\"
                 , u.display_name  AS \"user_display_name\"
             FROM feedback f
             LEFT JOIN users u ON u.id = f.user_id
-            WHERE f.handled = 0 AND f.dismissed = 0 AND f.reply IS NULL
+            WHERE NOT f.handled AND NOT f.dismissed AND f.reply IS NULL
             ORDER BY f.created_at DESC
             "
         )
@@ -120,17 +120,17 @@ pub async fn list(filter: &FeedbackFilter) -> Result<Vec<FeedbackRow>, sqlx::Err
                 , f.meta_lang
                 , f.meta_build
                 , f.ip            AS \"ip!\"
-                , f.created_at    AS \"created_at!\"
+                , f.created_at    AS \"created_at!: time::OffsetDateTime\"
                 , f.handled       AS \"handled!\"
                 , f.dismissed     AS \"dismissed!\"
                 , f.reply
-                , f.replied_at
+                , f.replied_at   AS \"replied_at: time::OffsetDateTime\"
                 , f.user_id
                 , u.email         AS \"user_email\"
                 , u.display_name  AS \"user_display_name\"
             FROM feedback f
             LEFT JOIN users u ON u.id = f.user_id
-            WHERE f.handled = 1 OR f.dismissed = 1 OR f.reply IS NOT NULL
+            WHERE f.handled OR f.dismissed OR f.reply IS NOT NULL
             ORDER BY f.created_at DESC
             "
         )
@@ -152,11 +152,11 @@ pub async fn list(filter: &FeedbackFilter) -> Result<Vec<FeedbackRow>, sqlx::Err
                 , f.meta_lang
                 , f.meta_build
                 , f.ip            AS \"ip!\"
-                , f.created_at    AS \"created_at!\"
+                , f.created_at    AS \"created_at!: time::OffsetDateTime\"
                 , f.handled       AS \"handled!\"
                 , f.dismissed     AS \"dismissed!\"
                 , f.reply
-                , f.replied_at
+                , f.replied_at   AS \"replied_at: time::OffsetDateTime\"
                 , f.user_id
                 , u.email         AS \"user_email\"
                 , u.display_name  AS \"user_display_name\"
@@ -176,7 +176,7 @@ pub async fn list(filter: &FeedbackFilter) -> Result<Vec<FeedbackRow>, sqlx::Err
 }
 
 pub async fn delete(id: i64) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query!("DELETE FROM feedback WHERE id = ?", id)
+    let result = sqlx::query!("DELETE FROM feedback WHERE id = $1", id)
         .execute(&Database::pool())
         .await?;
     Ok(result.rows_affected() > 0)
@@ -196,17 +196,17 @@ pub async fn list_for_user(user_id: &str) -> Result<Vec<FeedbackRow>, sqlx::Erro
             , f.meta_lang
             , f.meta_build
             , f.ip            AS \"ip!\"
-            , f.created_at    AS \"created_at!\"
+            , f.created_at    AS \"created_at!: time::OffsetDateTime\"
             , f.handled       AS \"handled!\"
             , f.dismissed     AS \"dismissed!\"
             , f.reply
-            , f.replied_at
+            , f.replied_at   AS \"replied_at: time::OffsetDateTime\"
             , f.user_id
             , u.email         AS \"user_email\"
             , u.display_name  AS \"user_display_name\"
         FROM feedback f
         LEFT JOIN users u ON u.id = f.user_id
-        WHERE f.user_id = ?
+        WHERE f.user_id = $1
         ORDER BY f.created_at DESC
         ",
         user_id,
@@ -234,17 +234,17 @@ async fn fetch_one(id: i64) -> Result<Option<FeedbackRow>, sqlx::Error> {
             , f.meta_lang
             , f.meta_build
             , f.ip            AS \"ip!\"
-            , f.created_at    AS \"created_at!\"
+            , f.created_at    AS \"created_at!: time::OffsetDateTime\"
             , f.handled       AS \"handled!\"
             , f.dismissed     AS \"dismissed!\"
             , f.reply
-            , f.replied_at
+            , f.replied_at   AS \"replied_at: time::OffsetDateTime\"
             , f.user_id
             , u.email         AS \"user_email\"
             , u.display_name  AS \"user_display_name\"
         FROM feedback f
         LEFT JOIN users u ON u.id = f.user_id
-        WHERE f.id = ?
+        WHERE f.id = $1
         ",
         id
     )
@@ -254,10 +254,9 @@ async fn fetch_one(id: i64) -> Result<Option<FeedbackRow>, sqlx::Error> {
 }
 
 pub async fn set_handled(id: i64, handled: bool) -> Result<Option<FeedbackRow>, sqlx::Error> {
-    let handled_int: i64 = handled.into();
     let result = sqlx::query!(
-        "UPDATE feedback SET handled = ?, dismissed = 0 WHERE id = ?",
-        handled_int,
+        "UPDATE feedback SET handled = $1, dismissed = false WHERE id = $2",
+        handled,
         id
     )
     .execute(&Database::pool())
@@ -271,9 +270,10 @@ pub async fn set_handled(id: i64, handled: bool) -> Result<Option<FeedbackRow>, 
 
 /// Admin reply: sets `reply`/`replied_at` and marks acknowledged.
 pub async fn reply(id: i64, reply: &str) -> Result<Option<FeedbackRow>, sqlx::Error> {
-    let now = jiff::Timestamp::now().to_string();
+    let now = crate::database::time::now();
     let result = sqlx::query!(
-        "UPDATE feedback SET reply = ?, replied_at = ?, handled = 1, dismissed = 0 WHERE id = ?",
+        "UPDATE feedback SET reply = $1, replied_at = $2, handled = true, dismissed = false WHERE \
+         id = $3",
         reply,
         now,
         id
@@ -290,7 +290,7 @@ pub async fn reply(id: i64, reply: &str) -> Result<Option<FeedbackRow>, sqlx::Er
 /// Admin dismiss: closes the feedback without a reply.
 pub async fn dismiss(id: i64) -> Result<Option<FeedbackRow>, sqlx::Error> {
     let result = sqlx::query!(
-        "UPDATE feedback SET dismissed = 1, handled = 0 WHERE id = ?",
+        "UPDATE feedback SET dismissed = true, handled = false WHERE id = $1",
         id
     )
     .execute(&Database::pool())

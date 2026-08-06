@@ -55,8 +55,8 @@ pub enum UnlinkResult {
     LastIdentity,
 }
 
-fn now_iso() -> String {
-    jiff::Timestamp::now().to_string()
+fn now_db() -> time::OffsetDateTime {
+    crate::database::time::now()
 }
 
 fn is_unique_violation(e: &sqlx::Error) -> bool {
@@ -70,7 +70,7 @@ struct Identity {
 }
 
 async fn find_identity(
-    tx: &mut sqlx::sqlite::SqliteConnection,
+    tx: &mut sqlx::PgConnection,
     provider_id: &str,
     subject: &str,
 ) -> Result<Option<Identity>, sqlx::Error> {
@@ -78,7 +78,7 @@ async fn find_identity(
         "
         SELECT id, user_id
         FROM user_oauth_identities
-        WHERE provider = ? AND provider_subject = ?
+        WHERE provider = $1 AND provider_subject = $2
         ",
         provider_id,
         subject,
@@ -93,19 +93,19 @@ async fn find_identity(
 }
 
 async fn refresh_identity_fields(
-    tx: &mut sqlx::sqlite::SqliteConnection,
+    tx: &mut sqlx::PgConnection,
     identity_id: &str,
     info: &ProviderUserInfo,
-    now: &str,
+    now: time::OffsetDateTime,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "
         UPDATE user_oauth_identities
-        SET provider_email        = ?,
-            provider_display_name = ?,
-            provider_avatar_url   = ?,
-            updated_at            = ?
-        WHERE id = ?
+        SET provider_email        = $1,
+            provider_display_name = $2,
+            provider_avatar_url   = $3,
+            updated_at            = $4
+        WHERE id = $5
         ",
         info.email,
         info.name,
@@ -120,11 +120,11 @@ async fn refresh_identity_fields(
 }
 
 async fn insert_identity(
-    tx: &mut sqlx::sqlite::SqliteConnection,
+    tx: &mut sqlx::PgConnection,
     user_id: &str,
     provider_id: &str,
     info: &ProviderUserInfo,
-    now: &str,
+    now: time::OffsetDateTime,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "
@@ -140,15 +140,15 @@ async fn insert_identity(
             , updated_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
+            , $4
+            , $5
+            , $6
+            , $7
+            , $8
+            , $9
             )
         ",
         ulid::Ulid::new().to_string(),
@@ -171,11 +171,11 @@ pub async fn login(
     provider_id: &str,
     info: &ProviderUserInfo,
 ) -> Result<LoginOutcome, sqlx::Error> {
-    let now = now_iso();
+    let now = now_db();
     let mut tx = Database::pool().begin().await?;
 
     if let Some(identity) = find_identity(&mut tx, provider_id, &info.subject).await? {
-        refresh_identity_fields(&mut tx, &identity.id, info, &now).await?;
+        refresh_identity_fields(&mut tx, &identity.id, info, now).await?;
         tx.commit().await?;
         return Ok(LoginOutcome {
             user_id: identity.user_id,
@@ -195,12 +195,12 @@ pub async fn login(
             , updated_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
+            , $4
+            , $5
+            , $6
             )
         ",
         user_id,
@@ -213,7 +213,7 @@ pub async fn login(
     .execute(&mut *tx)
     .await?;
 
-    match insert_identity(&mut tx, &user_id, provider_id, info, &now).await {
+    match insert_identity(&mut tx, &user_id, provider_id, info, now).await {
         Ok(()) => {
             tx.commit().await?;
             Ok(LoginOutcome {
@@ -229,7 +229,7 @@ pub async fn login(
             let identity = find_identity(&mut tx, provider_id, &info.subject)
                 .await?
                 .ok_or(sqlx::Error::RowNotFound)?;
-            refresh_identity_fields(&mut tx, &identity.id, info, &now).await?;
+            refresh_identity_fields(&mut tx, &identity.id, info, now).await?;
             tx.commit().await?;
             Ok(LoginOutcome {
                 user_id: identity.user_id,
@@ -245,14 +245,14 @@ pub async fn link(
     info: &ProviderUserInfo,
     current_user_id: &str,
 ) -> Result<LinkOutcome, LinkError> {
-    let now = now_iso();
+    let now = now_db();
     let mut tx = Database::pool().begin().await?;
 
     let existing = find_identity(&mut tx, provider_id, &info.subject).await?;
 
     let outcome = match existing {
         Some(identity) if identity.user_id == current_user_id => {
-            refresh_identity_fields(&mut tx, &identity.id, info, &now).await?;
+            refresh_identity_fields(&mut tx, &identity.id, info, now).await?;
             LinkOutcome::AlreadyLinked
         }
         Some(other) => {
@@ -262,14 +262,14 @@ pub async fn link(
                 source_user_id: other.user_id,
             });
         }
-        None => match insert_identity(&mut tx, current_user_id, provider_id, info, &now).await {
+        None => match insert_identity(&mut tx, current_user_id, provider_id, info, now).await {
             Ok(()) => LinkOutcome::Linked,
             Err(e) if is_unique_violation(&e) => {
                 let identity = find_identity(&mut tx, provider_id, &info.subject)
                     .await?
                     .ok_or(sqlx::Error::RowNotFound)?;
                 if identity.user_id == current_user_id {
-                    refresh_identity_fields(&mut tx, &identity.id, info, &now).await?;
+                    refresh_identity_fields(&mut tx, &identity.id, info, now).await?;
                     LinkOutcome::AlreadyLinked
                 } else {
                     drop(tx);
@@ -293,8 +293,8 @@ pub async fn unlink(user_id: &str, provider_id: &str) -> Result<UnlinkResult, sq
     let res = sqlx::query!(
         "
         DELETE FROM user_oauth_identities
-        WHERE user_id = ? AND provider = ?
-          AND (SELECT COUNT(*) FROM user_oauth_identities WHERE user_id = ?) > 1
+        WHERE user_id = $1 AND provider = $2
+          AND (SELECT COUNT(*) FROM user_oauth_identities WHERE user_id = $3) > 1
         ",
         user_id,
         provider_id,
@@ -313,8 +313,8 @@ pub async fn unlink(user_id: &str, provider_id: &str) -> Result<UnlinkResult, sq
         SELECT
             COUNT(*) AS \"count!: i64\"
         FROM user_oauth_identities
-        WHERE   user_id = ?
-            AND provider = ?
+        WHERE   user_id = $1
+            AND provider = $2
         ",
         user_id,
         provider_id,
@@ -335,14 +335,14 @@ pub async fn transfer(
     provider_subject: &str,
     source_user_id: &str,
 ) -> Result<TransferResult, sqlx::Error> {
-    let now = now_iso();
+    let now = now_db();
     let mut tx = Database::pool().begin().await?;
 
     let identity = sqlx::query!(
         "
         SELECT id, user_id
         FROM user_oauth_identities
-        WHERE provider = ? AND provider_subject = ?
+        WHERE provider = $1 AND provider_subject = $2
         ",
         provider_id,
         provider_subject,
@@ -363,7 +363,7 @@ pub async fn transfer(
 
     // Move the identity to the target.
     sqlx::query!(
-        "UPDATE user_oauth_identities SET user_id = ?, updated_at = ? WHERE id = ?",
+        "UPDATE user_oauth_identities SET user_id = $1, updated_at = $2 WHERE id = $3",
         target_user_id,
         now,
         identity.id,
@@ -374,10 +374,10 @@ pub async fn transfer(
     sqlx::query!(
         "
         INSERT INTO user_settings (user_id, settings, updated_at)
-        SELECT ?, settings, updated_at
+        SELECT $1, settings, updated_at
         FROM user_settings
-        WHERE user_id = ?
-          AND NOT EXISTS (SELECT 1 FROM user_settings WHERE user_id = ?)
+        WHERE user_id = $2
+          AND NOT EXISTS (SELECT 1 FROM user_settings WHERE user_id = $3)
         ",
         target_user_id,
         source_user_id,
@@ -386,7 +386,7 @@ pub async fn transfer(
     .execute(&mut *tx)
     .await?;
     sqlx::query!(
-        "UPDATE feedback SET user_id = ? WHERE user_id = ?",
+        "UPDATE feedback SET user_id = $1 WHERE user_id = $2",
         target_user_id,
         source_user_id,
     )
@@ -394,13 +394,13 @@ pub async fn transfer(
     .await?;
 
     let remaining = sqlx::query_scalar!(
-        "SELECT COUNT(*) AS \"count!: i64\" FROM user_oauth_identities WHERE user_id = ?",
+        "SELECT COUNT(*) AS \"count!: i64\" FROM user_oauth_identities WHERE user_id = $1",
         source_user_id,
     )
     .fetch_one(&mut *tx)
     .await?;
     if remaining == 0 {
-        sqlx::query!("DELETE FROM users WHERE id = ?", source_user_id)
+        sqlx::query!("DELETE FROM users WHERE id = $1", source_user_id)
             .execute(&mut *tx)
             .await?;
     }
@@ -417,7 +417,7 @@ pub async fn identities_for_user(user_id: &str) -> Result<Vec<IdentityPublic>, s
                provider_display_name,
                provider_avatar_url
         FROM user_oauth_identities
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY created_at
         ",
         user_id,
@@ -445,7 +445,7 @@ pub async fn user_by_id(id: &str) -> Option<User> {
             , email
             , avatar_url
         FROM users
-        WHERE id = ?
+        WHERE id = $1
         ",
         id,
     )
@@ -473,7 +473,7 @@ pub struct UserSummary {
     pub display_name: Option<String>,
     pub email: Option<String>,
     pub providers: Vec<String>,
-    pub created_at: String,
+    pub created_at: jiff::Timestamp,
     pub notice_count: i64,
 }
 
@@ -487,7 +487,7 @@ pub async fn delete_user(user_id: &str) -> Result<DeleteUserResult, sqlx::Error>
     let sessions = session::list_sessions_for_user(user_id).await?;
     let session_ids: Vec<String> = sessions.into_iter().map(|s| s.id).collect();
 
-    let res = sqlx::query!("DELETE FROM users WHERE id = ?", user_id)
+    let res = sqlx::query!("DELETE FROM users WHERE id = $1", user_id)
         .execute(&Database::pool())
         .await?;
 
@@ -504,11 +504,11 @@ pub async fn list_users() -> Result<Vec<UserSummary>, sqlx::Error> {
                u.display_name,
                u.email,
                COALESCE(
-                 (SELECT GROUP_CONCAT(provider, ',' ORDER BY created_at)
+                 (SELECT string_agg(provider, ',' ORDER BY created_at)
                   FROM user_oauth_identities WHERE user_id = u.id),
                  ''
                ) AS \"providers!: String\",
-               u.created_at AS \"created_at!: String\",
+               u.created_at AS \"created_at!: time::OffsetDateTime\",
                (SELECT COUNT(*) FROM user_notices WHERE user_id = u.id) AS \"notice_count!: i64\"
         FROM users u
         ORDER BY u.created_at DESC
@@ -528,7 +528,7 @@ pub async fn list_users() -> Result<Vec<UserSummary>, sqlx::Error> {
             } else {
                 u.providers.split(',').map(String::from).collect()
             },
-            created_at: u.created_at,
+            created_at: crate::database::time::to_jiff(u.created_at),
             notice_count: u.notice_count,
         })
         .collect())
@@ -541,14 +541,14 @@ pub async fn user_summary_by_id(id: &str) -> Result<Option<UserSummary>, sqlx::E
                u.display_name,
                u.email,
                COALESCE(
-                 (SELECT GROUP_CONCAT(provider, ',' ORDER BY created_at)
+                 (SELECT string_agg(provider, ',' ORDER BY created_at)
                   FROM user_oauth_identities WHERE user_id = u.id),
                  ''
                ) AS \"providers!: String\",
-               u.created_at AS \"created_at!: String\",
+               u.created_at AS \"created_at!: time::OffsetDateTime\",
                (SELECT COUNT(*) FROM user_notices WHERE user_id = u.id) AS \"notice_count!: i64\"
         FROM users u
-        WHERE u.id = ?
+        WHERE u.id = $1
         ",
         id,
     )
@@ -564,7 +564,7 @@ pub async fn user_summary_by_id(id: &str) -> Result<Option<UserSummary>, sqlx::E
         } else {
             u.providers.split(',').map(String::from).collect()
         },
-        created_at: u.created_at,
+        created_at: crate::database::time::to_jiff(u.created_at),
         notice_count: u.notice_count,
     }))
 }
@@ -574,14 +574,14 @@ pub async fn update_user(
     display_name: Option<String>,
     email: Option<String>,
 ) -> Result<Option<UserSummary>, sqlx::Error> {
-    let now = jiff::Zoned::now().to_string();
+    let now = crate::database::time::now();
     let res = sqlx::query!(
         "
         UPDATE users
-        SET display_name = COALESCE(?, display_name),
-            email        = COALESCE(?, email),
-            updated_at   = ?
-        WHERE id = ?
+        SET display_name = COALESCE($1, display_name),
+            email        = COALESCE($2, email),
+            updated_at   = $3
+        WHERE id = $4
         ",
         display_name,
         email,

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM user_oauth_identities\n        WHERE user_id = $1 AND provider = $2\n          AND (SELECT COUNT(*) FROM user_oauth_identities WHERE user_id = $3) > 1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1357d70ef6a1e631189bb0889028be3c1c5fdea6eefc14e8acddd9095b01fadf"
+}

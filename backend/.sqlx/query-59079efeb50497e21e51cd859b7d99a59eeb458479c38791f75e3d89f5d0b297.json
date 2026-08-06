@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gtfs_schedule_meta (last_modified, etag) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "59079efeb50497e21e51cd859b7d99a59eeb458479c38791f75e3d89f5d0b297"
+}

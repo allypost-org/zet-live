@@ -37,7 +37,7 @@ pub async fn load_from_db() -> AdminSettings {
         "
         SELECT
               name as \"name!\"
-            , value
+            , value AS \"value: serde_json::Value\"
         FROM admin_settings
         "
     )
@@ -46,10 +46,7 @@ pub async fn load_from_db() -> AdminSettings {
     .unwrap_or_default();
 
     let map = rows.into_iter().fold(serde_json::Map::new(), |mut acc, x| {
-        acc.insert(
-            x.name,
-            serde_json::from_slice(x.value.as_slice()).unwrap_or_default(),
-        );
+        acc.insert(x.name, x.value);
 
         acc
     });

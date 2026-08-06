@@ -2,9 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::FileData;
-use crate::proto::gtfs_schedule::data::BulkInsert;
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Shape {
@@ -19,22 +16,8 @@ pub struct Shape {
     pub longitude: f64,
     #[serde(alias = "shape_pt_sequence")]
     #[sqlx(rename = "shape_pt_sequence")]
-    pub sequence: u32,
+    pub sequence: i32,
     #[serde(alias = "shape_dist_traveled")]
     #[sqlx(rename = "shape_dist_traveled")]
     pub distance: Option<f64>,
-}
-
-impl FileData for Shape {
-    fn file_name() -> &'static str {
-        "shapes.txt"
-    }
-
-    fn table_name() -> &'static str {
-        "gtfs_shapes"
-    }
-
-    fn into_bulk_insert(self) -> BulkInsert {
-        BulkInsert::Shape(self)
-    }
 }

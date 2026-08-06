@@ -271,7 +271,7 @@ async fn get_auth_providers() -> impl IntoResponse {
         "
         SELECT id            AS \"id!: String\",
                client_id     AS \"client_id!: String\",
-               enabled       AS \"enabled!: i64\"
+               enabled       AS \"enabled!: bool\"
         FROM auth_providers
         ORDER BY id
         "
@@ -288,7 +288,7 @@ async fn get_auth_providers() -> impl IntoResponse {
                     .map_or_else(|| r.id.clone(), |p| p.name.clone()),
                 id: r.id,
                 client_id: r.client_id,
-                enabled: r.enabled != 0,
+                enabled: r.enabled,
             })
             .collect(),
         Err(e) => {
@@ -326,8 +326,7 @@ async fn create_auth_provider(axum::Json(body): axum::Json<CreateAuthProvider>) 
         )
             .into_response();
     }
-    let now = jiff::Timestamp::now().to_string();
-    let enabled_i = i64::from(body.enabled);
+    let now = crate::database::time::now();
     match sqlx::query!(
         "
         INSERT INTO auth_providers
@@ -339,12 +338,12 @@ async fn create_auth_provider(axum::Json(body): axum::Json<CreateAuthProvider>) 
             , updated_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
+            , $4
+            , $5
+            , $6
             )
         ON CONFLICT(id) DO UPDATE SET
               client_id     = excluded.client_id
@@ -355,7 +354,7 @@ async fn create_auth_provider(axum::Json(body): axum::Json<CreateAuthProvider>) 
         body.id,
         body.client_id,
         body.client_secret,
-        enabled_i,
+        body.enabled,
         now,
         now,
     )
@@ -396,20 +395,20 @@ async fn update_auth_provider(
         )
             .into_response();
     }
-    let now = jiff::Timestamp::now().to_string();
-    let enabled_i = body.enabled.map(i64::from);
+    let now = crate::database::time::now();
+    let enabled = body.enabled;
     match sqlx::query!(
         "
         UPDATE auth_providers
-        SET client_id     = COALESCE(?, client_id),
-            client_secret = COALESCE(?, client_secret),
-            enabled       = COALESCE(?, enabled),
-            updated_at    = ?
-        WHERE id = ?
+        SET client_id     = COALESCE($1, client_id),
+            client_secret = COALESCE($2, client_secret),
+            enabled       = COALESCE($3, enabled),
+            updated_at    = $4
+        WHERE id = $5
         ",
         body.client_id,
         body.client_secret,
-        enabled_i,
+        enabled,
         now,
         id,
     )
@@ -430,7 +429,7 @@ async fn update_auth_provider(
 
 /// `DELETE /api/auth-providers/{id}` -> remove a provider's config.
 async fn delete_auth_provider(Path(id): Path<String>) -> Response {
-    match sqlx::query!("DELETE FROM auth_providers WHERE id = ?", id)
+    match sqlx::query!("DELETE FROM auth_providers WHERE id = $1", id)
         .execute(&crate::database::Database::pool())
         .await
     {
@@ -507,7 +506,7 @@ struct UserDetailResponse {
     display_name: Option<String>,
     email: Option<String>,
     providers: Vec<String>,
-    created_at: String,
+    created_at: jiff::Timestamp,
     notice_count: i64,
     sessions: Vec<crate::auth::session::SessionInfo>,
     notices: Vec<crate::admin::settings::GlobalNotice>,

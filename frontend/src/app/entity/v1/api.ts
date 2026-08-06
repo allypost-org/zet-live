@@ -38,6 +38,7 @@ export const tripInfoResponseSchema = z.object({
     stopIds: z.array(z.string()),
     route: z.array(z.tuple([z.number(), z.number()])),
     stopTimes: z.array(stopTimeSchema),
+    partial: z.boolean().default(false),
   }),
 });
 

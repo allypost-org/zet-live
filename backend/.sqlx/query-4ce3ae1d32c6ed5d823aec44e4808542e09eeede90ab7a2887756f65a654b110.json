@@ -1,0 +1,136 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                trip_id\n                , route_id\n                , service_id\n                , trip_headsign\n                , trip_short_name\n                , direction_id\n                , block_id\n                , shape_id\n                , wheelchair_boarding\n                , bikes_allowed\n            FROM gtfs_trips\n            WHERE trip_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "trip_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "trip_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "route_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "route_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "service_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "service_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "trip_headsign",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "trip_headsign"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "trip_short_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "trip_short_name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "direction_id",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "direction_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "block_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "block_id"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "shape_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "shape_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "wheelchair_boarding",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "wheelchair_boarding"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "bikes_allowed",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "bikes_allowed"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4ce3ae1d32c6ed5d823aec44e4808542e09eeede90ab7a2887756f65a654b110"
+}

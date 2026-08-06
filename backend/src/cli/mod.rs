@@ -1,6 +1,5 @@
 use std::{
     net::SocketAddr,
-    path::PathBuf,
     sync::{Arc, OnceLock},
 };
 
@@ -154,10 +153,11 @@ pub struct ServerConfig {
     #[clap(long, env = "BIND_TO", default_value = "0.0.0.0:9011")]
     pub bind_to: SocketAddr,
 
-    /// The `SQLite` database URL to use.
+    /// The `PostgreSQL` database URL to use.
     ///
-    /// Should be a valid database URL, such as `sqlite:./db.sqlite`.
-    #[clap(long, default_value = ":memory:", env = "DATABASE_URL", value_parser = DatabaseUrl::try_from_string)]
+    /// Must be a libpq-style URL, e.g. `postgres://user:pass@host:5432/dbname`.
+    /// Required: the server will not start without it.
+    #[clap(long, env = "DATABASE_URL", value_parser = DatabaseUrl::try_from_string)]
     pub database_url: DatabaseUrl,
 
     /// The source to use for the client's IP address.
@@ -206,34 +206,42 @@ pub struct ServerConfig {
     pub session_max_age: jiff::Span,
 }
 
-#[derive(Debug, Clone)]
-pub enum DatabaseUrl {
-    Memory,
-    Local(PathBuf),
-}
-impl DatabaseUrl {
-    fn try_from_string(s: &str) -> Result<Self, String> {
-        if s == ":memory:" {
-            return Ok(Self::Memory);
-        }
+#[derive(Clone)]
+pub struct DatabaseUrl(String);
 
-        url::Url::parse(s).map_or_else(
-            |_| Ok(Self::Local(PathBuf::from(s))),
-            |url| match url.scheme() {
-                "sqlite" | "sqlite3" | "file" => Ok(Self::Local(PathBuf::from(url.path()))),
-                _ => {
-                    Err("Invalid database URL scheme (expected sqlite:, sqlite3:, or file:)".into())
-                }
-            },
-        )
+impl std::fmt::Debug for DatabaseUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Redact userinfo to avoid leaking the password in debug logs.
+        match url::Url::parse(&self.0) {
+            Ok(mut url) => {
+                let _ = url.set_password(None);
+                let _ = url.set_username("");
+                write!(f, "DatabaseUrl({})", url.as_str())
+            }
+            Err(_) => write!(f, "DatabaseUrl(<unparseable>)"),
+        }
     }
 }
+
+impl DatabaseUrl {
+    pub fn try_from_string(s: &str) -> Result<Self, String> {
+        let url = url::Url::parse(s).map_err(|e| format!("Invalid database URL: {e}"))?;
+        match url.scheme() {
+            "postgres" | "postgresql" => Ok(Self(s.to_string())),
+            other => Err(format!(
+                "Invalid database URL scheme `{other}` (expected `postgres://` or `postgresql://`)"
+            )),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl std::fmt::Display for DatabaseUrl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Memory => write!(f, ":memory:"),
-            Self::Local(path) => write!(f, "file://{}", path.display()),
-        }
+        f.write_str(&self.0)
     }
 }
 

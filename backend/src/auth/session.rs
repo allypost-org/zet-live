@@ -29,18 +29,13 @@ fn sha256(bytes: &[u8]) -> Vec<u8> {
     Sha256::digest(bytes).to_vec()
 }
 
-fn now_iso() -> String {
-    jiff::Timestamp::now().to_string()
+fn now_db() -> time::OffsetDateTime {
+    crate::database::time::now()
 }
 
-fn expires_iso(max_age: Duration) -> String {
-    let now = jiff::Timestamp::now();
-    let secs = now
-        .as_second()
-        .saturating_add(i64::try_from(max_age.as_secs()).unwrap_or(0));
-    jiff::Timestamp::from_second(secs)
-        .unwrap_or(now)
-        .to_string()
+fn expires_db(max_age: Duration) -> time::OffsetDateTime {
+    time::OffsetDateTime::now_utc()
+        .saturating_add(time::Duration::seconds(max_age.as_secs().cast_signed()))
 }
 
 fn decode_token(token: &str) -> Option<Vec<u8>> {
@@ -73,8 +68,8 @@ pub async fn create_session(
     let raw = random_bytes(TOKEN_LEN);
     let hash = sha256(&raw);
     let token = URL_SAFE_NO_PAD.encode(&raw);
-    let created_at = now_iso();
-    let expires_at = expires_iso(max_age);
+    let created_at = now_db();
+    let expires_at = expires_db(max_age);
 
     sqlx::query!(
         "
@@ -88,13 +83,13 @@ pub async fn create_session(
             , user_agent
             )
         VALUES
-            ( ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
+            , $4
+            , $5
+            , $6
+            , $7
             )
         ",
         id,
@@ -116,13 +111,13 @@ pub async fn lookup_session(token: &str) -> Result<Option<SessionRow>, sqlx::Err
         return Ok(None);
     };
     let hash = sha256(&raw);
-    let now = now_iso();
+    let now = now_db();
 
     let row = sqlx::query!(
         "
         SELECT id, user_id
         FROM user_sessions
-        WHERE token_hash = ? AND expires_at > ?
+        WHERE token_hash = $1 AND expires_at > $2
         ",
         hash,
         now,
@@ -142,7 +137,7 @@ pub async fn delete_session(token: &str) -> Result<bool, sqlx::Error> {
     };
     let hash = sha256(&raw);
 
-    let res = sqlx::query!("DELETE FROM user_sessions WHERE token_hash = ?", hash)
+    let res = sqlx::query!("DELETE FROM user_sessions WHERE token_hash = $1", hash)
         .execute(&Database::pool())
         .await?;
 
@@ -154,8 +149,8 @@ pub async fn delete_session(token: &str) -> Result<bool, sqlx::Error> {
 pub struct SessionInfo {
     pub id: String,
     pub user_id: String,
-    pub created_at: String,
-    pub expires_at: String,
+    pub created_at: jiff::Timestamp,
+    pub expires_at: jiff::Timestamp,
     pub ip: Option<String>,
     pub user_agent: Option<String>,
 }
@@ -166,12 +161,12 @@ pub async fn list_sessions_for_user(user_id: &str) -> Result<Vec<SessionInfo>, s
         SELECT
               id
             , user_id
-            , created_at
-            , expires_at
+            , created_at AS \"created_at!: time::OffsetDateTime\"
+            , expires_at AS \"expires_at!: time::OffsetDateTime\"
             , ip
             , user_agent
         FROM user_sessions
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY created_at DESC
         ",
         user_id,
@@ -184,8 +179,8 @@ pub async fn list_sessions_for_user(user_id: &str) -> Result<Vec<SessionInfo>, s
         .map(|r| SessionInfo {
             id: r.id,
             user_id: r.user_id,
-            created_at: r.created_at,
-            expires_at: r.expires_at,
+            created_at: crate::database::time::to_jiff(r.created_at),
+            expires_at: crate::database::time::to_jiff(r.expires_at),
             ip: r.ip,
             user_agent: r.user_agent,
         })
@@ -198,8 +193,8 @@ pub async fn list_all_sessions() -> Result<Vec<SessionInfo>, sqlx::Error> {
         SELECT
               id
             , user_id
-            , created_at
-            , expires_at
+            , created_at AS \"created_at!: time::OffsetDateTime\"
+            , expires_at AS \"expires_at!: time::OffsetDateTime\"
             , ip
             , user_agent
         FROM user_sessions
@@ -214,8 +209,8 @@ pub async fn list_all_sessions() -> Result<Vec<SessionInfo>, sqlx::Error> {
         .map(|r| SessionInfo {
             id: r.id,
             user_id: r.user_id,
-            created_at: r.created_at,
-            expires_at: r.expires_at,
+            created_at: crate::database::time::to_jiff(r.created_at),
+            expires_at: crate::database::time::to_jiff(r.expires_at),
             ip: r.ip,
             user_agent: r.user_agent,
         })
@@ -224,7 +219,7 @@ pub async fn list_all_sessions() -> Result<Vec<SessionInfo>, sqlx::Error> {
 
 pub async fn delete_session_by_id(id: &str) -> Result<Option<String>, sqlx::Error> {
     let row = sqlx::query!(
-        "DELETE FROM user_sessions WHERE id = ? RETURNING user_id AS \"user_id!: String\"",
+        "DELETE FROM user_sessions WHERE id = $1 RETURNING user_id AS \"user_id!: String\"",
         id,
     )
     .fetch_optional(&Database::pool())
@@ -235,7 +230,7 @@ pub async fn delete_session_by_id(id: &str) -> Result<Option<String>, sqlx::Erro
 
 pub async fn delete_session_by_id_for_user(id: &str, user_id: &str) -> Result<bool, sqlx::Error> {
     let res = sqlx::query!(
-        "DELETE FROM user_sessions WHERE id = ? AND user_id = ?",
+        "DELETE FROM user_sessions WHERE id = $1 AND user_id = $2",
         id,
         user_id,
     )
@@ -250,7 +245,7 @@ pub async fn delete_other_sessions_for_user(
     keep_session_id: &str,
 ) -> Result<Vec<String>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"DELETE FROM user_sessions WHERE user_id = ? AND id != ? RETURNING id"#,
+        r#"DELETE FROM user_sessions WHERE user_id = $1 AND id != $2 RETURNING id"#,
         user_id,
         keep_session_id,
     )
@@ -270,8 +265,8 @@ pub async fn create_link_ticket(user_id: &str) -> Result<CreatedLinkTicket, sqlx
     let raw = random_bytes(TOKEN_LEN);
     let hash = sha256(&raw);
     let ticket = URL_SAFE_NO_PAD.encode(&raw);
-    let now = now_iso();
-    let expires_at = expires_iso(LINK_TICKET_MAX_AGE);
+    let now = now_db();
+    let expires_at = expires_db(LINK_TICKET_MAX_AGE);
 
     sqlx::query!(
         "
@@ -282,10 +277,10 @@ pub async fn create_link_ticket(user_id: &str) -> Result<CreatedLinkTicket, sqlx
             , created_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
+            , $4
             )
         ",
         hash,
@@ -304,12 +299,12 @@ pub async fn consume_link_ticket(ticket: &str) -> Result<Option<String>, sqlx::E
         return Ok(None);
     };
     let hash = sha256(&raw);
-    let now = now_iso();
+    let now = now_db();
 
     let row = sqlx::query!(
         "
         DELETE FROM link_tickets
-        WHERE token_hash = ? AND expires_at > ?
+        WHERE token_hash = $1 AND expires_at > $2
         RETURNING user_id
         ",
         hash,
@@ -335,8 +330,8 @@ pub async fn create_link_transfer(transfer: &PendingTransfer) -> Result<String, 
     let raw = random_bytes(TOKEN_LEN);
     let hash = sha256(&raw);
     let token = URL_SAFE_NO_PAD.encode(&raw);
-    let now = now_iso();
-    let expires_at = expires_iso(TRANSFER_MAX_AGE);
+    let now = now_db();
+    let expires_at = expires_db(TRANSFER_MAX_AGE);
 
     sqlx::query!(
         "
@@ -350,13 +345,13 @@ pub async fn create_link_transfer(transfer: &PendingTransfer) -> Result<String, 
             , created_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
+            , $4
+            , $5
+            , $6
+            , $7
             )
         ",
         hash,
@@ -383,12 +378,12 @@ pub async fn consume_link_transfer(
         return Ok(None);
     };
     let hash = sha256(&raw);
-    let now = now_iso();
+    let now = now_db();
 
     let row = sqlx::query!(
         "
         DELETE FROM pending_transfers
-        WHERE token_hash = ? AND expires_at > ? AND target_user_id = ?
+        WHERE token_hash = $1 AND expires_at > $2 AND target_user_id = $3
         RETURNING provider, provider_subject, source_user_id
         ",
         hash,
@@ -418,31 +413,19 @@ pub fn spawn_expiry_reaper() {
 }
 
 async fn reap_expired() -> Result<(), sqlx::Error> {
-    let now = now_iso();
-    sqlx::query!(
-        "DELETE FROM user_sessions WHERE expires_at < ?",
-        now.as_str()
-    )
-    .execute(&Database::pool())
-    .await?;
-    sqlx::query!(
-        "DELETE FROM oauth_states WHERE expires_at < ?",
-        now.as_str()
-    )
-    .execute(&Database::pool())
-    .await?;
-    sqlx::query!(
-        "DELETE FROM link_tickets WHERE expires_at < ?",
-        now.as_str()
-    )
-    .execute(&Database::pool())
-    .await?;
-    sqlx::query!(
-        "DELETE FROM pending_transfers WHERE expires_at < ?",
-        now.as_str()
-    )
-    .execute(&Database::pool())
-    .await?;
+    let now = now_db();
+    sqlx::query!("DELETE FROM user_sessions WHERE expires_at < $1", now)
+        .execute(&Database::pool())
+        .await?;
+    sqlx::query!("DELETE FROM oauth_states WHERE expires_at < $1", now)
+        .execute(&Database::pool())
+        .await?;
+    sqlx::query!("DELETE FROM link_tickets WHERE expires_at < $1", now)
+        .execute(&Database::pool())
+        .await?;
+    sqlx::query!("DELETE FROM pending_transfers WHERE expires_at < $1", now)
+        .execute(&Database::pool())
+        .await?;
     Ok(())
 }
 

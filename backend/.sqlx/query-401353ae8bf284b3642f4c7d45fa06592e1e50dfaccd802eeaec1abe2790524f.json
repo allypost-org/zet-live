@@ -1,11 +1,11 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "\n            SELECT\n                trip_id\n                , route_id\n                , service_id\n                , trip_headsign\n                , trip_short_name\n                , direction_id\n                , block_id\n                , shape_id\n                , wheelchair_boarding\n                , bikes_allowed\n            FROM gtfs_trips\n            ",
   "describe": {
     "columns": [
       {
-        "name": "trip_id",
         "ordinal": 0,
+        "name": "trip_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -15,8 +15,8 @@
         }
       },
       {
-        "name": "route_id",
         "ordinal": 1,
+        "name": "route_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -26,8 +26,8 @@
         }
       },
       {
-        "name": "service_id",
         "ordinal": 2,
+        "name": "service_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -37,8 +37,8 @@
         }
       },
       {
-        "name": "trip_headsign",
         "ordinal": 3,
+        "name": "trip_headsign",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -48,8 +48,8 @@
         }
       },
       {
-        "name": "trip_short_name",
         "ordinal": 4,
+        "name": "trip_short_name",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -59,9 +59,9 @@
         }
       },
       {
-        "name": "direction_id",
         "ordinal": 5,
-        "type_info": "Integer",
+        "name": "direction_id",
+        "type_info": "Int2",
         "origin": {
           "Table": {
             "table": "gtfs_trips",
@@ -70,8 +70,8 @@
         }
       },
       {
-        "name": "block_id",
         "ordinal": 6,
+        "name": "block_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -81,8 +81,8 @@
         }
       },
       {
-        "name": "shape_id",
         "ordinal": 7,
+        "name": "shape_id",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -92,9 +92,9 @@
         }
       },
       {
-        "name": "wheelchair_boarding",
         "ordinal": 8,
-        "type_info": "Integer",
+        "name": "wheelchair_boarding",
+        "type_info": "Int2",
         "origin": {
           "Table": {
             "table": "gtfs_trips",
@@ -103,9 +103,9 @@
         }
       },
       {
-        "name": "bikes_allowed",
         "ordinal": 9,
-        "type_info": "Integer",
+        "name": "bikes_allowed",
+        "type_info": "Int2",
         "origin": {
           "Table": {
             "table": "gtfs_trips",
@@ -115,7 +115,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": []
     },
     "nullable": [
       false,

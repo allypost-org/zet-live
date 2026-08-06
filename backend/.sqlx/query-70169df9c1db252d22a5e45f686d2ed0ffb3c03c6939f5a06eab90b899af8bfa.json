@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM gtfs_schedule_meta WHERE last_modified >= $1 OR etag = $2 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "etag",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_schedule_meta",
+            "name": "etag"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "last_modified",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gtfs_schedule_meta",
+            "name": "last_modified"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "fetched_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "gtfs_schedule_meta",
+            "name": "fetched_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "70169df9c1db252d22a5e45f686d2ed0ffb3c03c6939f5a06eab90b899af8bfa"
+}

@@ -68,13 +68,11 @@ pub async fn update_setting(
 ) -> Result<settings::AdminSettings, UpdateSettingError> {
     trace!(name, ?value, "Updating admin setting");
 
-    let now = jiff::Zoned::now().to_string();
-    let value_str = serde_json::to_string(&value)
-        .map_err(|e| UpdateSettingError::Serialization(e.to_string()))?;
+    let now = crate::database::time::now();
 
     let probe = {
         let mut map = serde_json::Map::new();
-        map.insert(name.to_string(), value);
+        map.insert(name.to_string(), value.clone());
         serde_json::Value::Object(map)
     };
     serde_json::from_value::<settings::AdminSettings>(probe)
@@ -88,9 +86,9 @@ pub async fn update_setting(
             , updated_at
             )
         VALUES
-            ( ?
-            , ?
-            , ?
+            ( $1
+            , $2
+            , $3
             )
          ON CONFLICT(name)
          DO UPDATE SET
@@ -98,7 +96,7 @@ pub async fn update_setting(
             , updated_at = excluded.updated_at
         ",
         name,
-        value_str,
+        value,
         now,
     )
     .execute(&Database::pool())
@@ -123,8 +121,6 @@ pub async fn update_setting(
 
 #[derive(Debug, thiserror::Error)]
 pub enum UpdateSettingError {
-    #[error("Serialization error: {0}")]
-    Serialization(String),
     #[error("Database error: {0}")]
     Database(String),
     #[error("Invalid setting {0:?}: {1}")]

@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                shape_pt_lat\n                , shape_pt_lon\n            FROM gtfs_shapes\n            WHERE shape_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "shape_pt_lat",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_lat"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "shape_pt_lon",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_lon"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "ccd04d56f73f2fc745f44e1aa957fad6b9f09b65ce81f2aff332371f4ce1b9b8"
+}

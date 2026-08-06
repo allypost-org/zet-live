@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT trip_key, stop_sequence, arrival_time_seconds\n        FROM gtfs_stop_times\n        WHERE arrival_time_seconds IS NOT NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "trip_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "trip_key"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "stop_sequence",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "stop_sequence"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "arrival_time_seconds",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "arrival_time_seconds"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "d1c9588f0cc677aa472ea27010728e04b9b8c11cf2c6f055e22fe96e004fea42"
+}

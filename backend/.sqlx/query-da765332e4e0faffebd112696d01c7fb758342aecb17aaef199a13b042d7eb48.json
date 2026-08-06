@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT u.id,\n               u.display_name,\n               u.email,\n               COALESCE(\n                 (SELECT string_agg(provider, ',' ORDER BY created_at)\n                  FROM user_oauth_identities WHERE user_id = u.id),\n                 ''\n               ) AS \"providers!: String\",\n               u.created_at AS \"created_at!: time::OffsetDateTime\",\n               (SELECT COUNT(*) FROM user_notices WHERE user_id = u.id) AS \"notice_count!: i64\"\n        FROM users u\n        ORDER BY u.created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "providers!: String",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at!: time::OffsetDateTime",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "notice_count!: i64",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      null,
+      false,
+      null
+    ]
+  },
+  "hash": "da765332e4e0faffebd112696d01c7fb758342aecb17aaef199a13b042d7eb48"
+}

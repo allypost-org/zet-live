@@ -1,12 +1,12 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT base_midnight FROM live_feed_metadata WHERE id = 0",
   "describe": {
     "columns": [
       {
-        "name": "base_midnight",
         "ordinal": 0,
-        "type_info": "Integer",
+        "name": "base_midnight",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "live_feed_metadata",
@@ -16,7 +16,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": []
     },
     "nullable": [
       false

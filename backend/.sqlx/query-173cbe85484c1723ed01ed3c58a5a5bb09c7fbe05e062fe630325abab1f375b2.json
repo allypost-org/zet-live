@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT next_stop_sequence, next_stop_arrival_time\n                 FROM live_vehicles WHERE trip_id = $1 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "next_stop_sequence",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "next_stop_sequence"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "next_stop_arrival_time",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "next_stop_arrival_time"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "173cbe85484c1723ed01ed3c58a5a5bb09c7fbe05e062fe630325abab1f375b2"
+}

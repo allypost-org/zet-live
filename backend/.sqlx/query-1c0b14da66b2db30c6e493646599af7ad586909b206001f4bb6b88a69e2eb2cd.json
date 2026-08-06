@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT\n                          trip_key AS \"trip_key!\"\n                        , NULLIF(trip_headsign, '') AS trip_headsign\n                    FROM gtfs_trips\n                    WHERE trip_key = ANY($1)\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "trip_key!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "trip_key"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "trip_headsign",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      true,
+      null
+    ]
+  },
+  "hash": "1c0b14da66b2db30c6e493646599af7ad586909b206001f4bb6b88a69e2eb2cd"
+}

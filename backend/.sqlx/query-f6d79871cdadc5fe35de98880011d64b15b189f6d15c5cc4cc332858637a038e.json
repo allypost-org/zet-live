@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO\n                    live_vehicles\n                        ( vehicle_id\n                        , route_id\n                        , trip_id\n                        , trip_key\n                        , route_long_name\n                        , trip_headsign\n                        , latitude\n                        , longitude\n                        , prev_latitude\n                        , prev_longitude\n                        , bearing\n                        , next_stop_id\n                        , next_stop_sequence\n                        , next_stop_arrival_delay\n                        , next_stop_arrival_time\n                        )\n                    VALUES\n                        ( $1\n                        , $2\n                        , $3\n                        , $4\n                        , $5\n                        , $6\n                        , $7\n                        , $8\n                        , $9\n                        , $10\n                        , $11\n                        , $12\n                        , $13\n                        , $14\n                        , $15\n                        )\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Text",
+        "Int4",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f6d79871cdadc5fe35de98880011d64b15b189f6d15c5cc4cc332858637a038e"
+}
