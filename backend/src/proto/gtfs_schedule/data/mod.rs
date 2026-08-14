@@ -316,9 +316,11 @@ pub enum FileDataError {
 /// to strip) are returned unchanged.
 ///
 /// The static schedule tables compute this via a GENERATED column (migration
-/// `20260803182207`); this function remains the source of truth for the
-/// realtime tables (`live_trips`, `live_vehicles`) which are still populated
-/// per-row from the GTFS-RT feed.
+/// `20260814120000_fix_trip_key_regex.up.sql`); this function remains the
+/// source of truth for the realtime tables (`live_trips`, `live_vehicles`)
+/// which are still populated per-row from the GTFS-RT feed. The SQL and Rust
+/// implementations MUST stay in sync — the guard regex strips the service-id
+/// segment regardless of its length.
 pub fn trip_key(trip_id: &str) -> String {
     let Some(first_us) = trip_id.find('_') else {
         return trip_id.to_string();
