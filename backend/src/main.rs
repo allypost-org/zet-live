@@ -12,6 +12,7 @@ mod cli;
 mod config;
 mod database;
 mod entity;
+mod feature_flags;
 mod http_client;
 mod logger;
 mod proto;

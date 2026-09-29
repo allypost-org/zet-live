@@ -13,6 +13,7 @@ const NAV: NavItem[] = [
   { to: "/", label: "Dashboard" },
   { to: "/settings", label: "Settings" },
   { to: "/auth", label: "Auth" },
+  { to: "/feature-flags", label: "Feature Flags" },
   { to: "/notices", label: "Notices" },
   { to: "/notifications", label: "Send Notification" },
   { to: "/sync", label: "Sync" },

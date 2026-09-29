@@ -99,6 +99,12 @@ Loaded by `dotenvy::dotenv()` (in `main.rs`) and by the backend justfile
   `frontend-admin/dist` must exist at compile time — run `just build` (or at
   least `just frontend build && just frontend-admin build`) before building the
   backend.
+- **Feature flags**: code-first registry in `src/feature_flags.rs` (keys seeded
+  into the `feature_flags` table at startup, `ON CONFLICT DO NOTHING`), an
+  `ArcSwap` in-memory snapshot for hot-path checks (`is_enabled`, fail closed),
+  admin CRUD at `/api/feature-flags` on the admin listener, and per-user
+  exposure via `/api/v1/capabilities` (`featureFlags`, only-enabled entries)
+  plus the WS `FeatureFlagsChanged` per-connection push.
 - **Database**: PostgreSQL via **sqlx** (the `postgres` feature). Connection
   pool of 20 in `src/database/mod.rs`. Migrations are applied at startup by
   `sqlx::migrate!("./migrations")`. No PRAGMA/optimize step (PG autovacuum

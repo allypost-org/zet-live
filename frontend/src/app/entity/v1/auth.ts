@@ -10,6 +10,7 @@ export const capabilitiesSchema = z.object({
   auth: z.object({
     providers: z.array(providerPublicSchema),
   }),
+  featureFlags: z.record(z.string(), z.boolean()).catch({}),
 });
 
 export type ProviderPublic = z.infer<typeof providerPublicSchema>;

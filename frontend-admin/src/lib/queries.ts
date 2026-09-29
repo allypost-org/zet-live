@@ -7,6 +7,8 @@ import {
   type AuthPreset,
   type Connections,
   type FeedbackFilter,
+  type FeatureFlagRow,
+  type FeatureFlagUpdate,
   type NoticeSeverity,
   type SessionInfo,
   type ToastPayload,
@@ -17,6 +19,7 @@ import {
   authProvidersResponseSchema,
   connectionsSchema,
   feedbackRowSchema,
+  featureFlagRowSchema,
   metadataMapSchema,
   sessionInfoSchema,
   toastPayloadSchema,
@@ -35,6 +38,7 @@ export const qk = {
   sessions: ["sessions"] as const,
   userNotices: ["user-notices"] as const,
   feedback: (filter: FeedbackFilter) => ["feedback", filter] as const,
+  featureFlags: ["feature-flags"] as const,
 };
 
 function parse<T>(schema: { parse: (v: unknown) => T }, value: unknown): T {
@@ -309,6 +313,35 @@ export function useDeleteUserNotice() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.userNotices });
       void qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
+export function useFeatureFlags() {
+  return useQuery({
+    queryKey: qk.featureFlags,
+    queryFn: async ({ signal }) =>
+      parse(featureFlagRowSchema.array(), await api.get("/feature-flags", signal)),
+  });
+}
+
+export function useUpdateFeatureFlag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: number; body: FeatureFlagUpdate }) =>
+      parse(featureFlagRowSchema, await api.patch<FeatureFlagRow>(`/feature-flags/${id}`, body)),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.featureFlags });
+    },
+  });
+}
+
+export function useDeleteFeatureFlag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => api.del(`/feature-flags/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.featureFlags });
     },
   });
 }

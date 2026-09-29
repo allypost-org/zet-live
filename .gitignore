@@ -1,3 +1,4 @@
 .env
 compose.yaml
 compose.*.yaml
+.superpowers/

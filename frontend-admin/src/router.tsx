@@ -12,6 +12,7 @@ import { getCredentials } from "@/lib/auth";
 import { z } from "zod";
 import { AuthRoute } from "@/routes/auth";
 import { DashboardRoute } from "@/routes/dashboard";
+import { FeatureFlagsRoute } from "@/routes/feature-flags";
 import { FeedbackRoute } from "@/routes/feedback";
 import { LoginRoute } from "@/routes/login";
 import { NoticesRoute } from "@/routes/notices";
@@ -103,6 +104,15 @@ const feedbackRoute = createRoute({
   }),
 });
 
+const featureFlagsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: "feature-flags",
+  component: FeatureFlagsRoute,
+  validateSearch: z.object({
+    flag: z.string().optional(),
+  }),
+});
+
 // Legacy bookmarks from the pre-consolidation nav → single Auth page.
 function redirectRoute(path: string) {
   return createRoute({
@@ -131,6 +141,7 @@ const routeTree = rootRoute.addChildren([
     notificationsRoute,
     syncRoute,
     feedbackRoute,
+    featureFlagsRoute,
     accountsRedirect,
     sessionsRedirect,
     authProvidersRedirect,

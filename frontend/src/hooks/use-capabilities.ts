@@ -3,6 +3,7 @@ import { API_URL } from "@/app/consts";
 import { apiFetch } from "@/app/entity/v1/api";
 import { capabilitiesSchema } from "@/app/entity/v1/auth";
 import { capabilitiesStore } from "@/capabilities-store";
+import { setFeatureFlags } from "@/feature-flags-store";
 
 export function useCapabilities() {
   useEffect(() => {
@@ -25,6 +26,7 @@ export function useCapabilities() {
         backendOrigin,
         loading: false,
       });
+      setFeatureFlags(data?.featureFlags ?? {});
     }
 
     void load();

@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT f.key     AS \"key!: String\",\n               s.user_id AS \"user_id!: String\"\n        FROM feature_flag_scoped_users s\n        JOIN feature_flags f ON f.id = s.flag_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "key!: String",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "feature_flags",
+            "name": "key"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id!: String",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "feature_flag_scoped_users",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "220ff21839425a7d6595b7e9f10884f4fd2e483e74d46ad952c244ef01af7a99"
+}

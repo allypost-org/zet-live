@@ -5,7 +5,7 @@ use axum::{
     extract::Path,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
 };
 use axum_extra::extract::Query;
 use serde::Deserialize;
@@ -60,6 +60,11 @@ pub fn create_admin_router(state: AdminState) -> Router {
             get(list_user_notices).post(create_user_notice),
         )
         .route("/user-notices/{id}", delete(delete_user_notice))
+        .route("/feature-flags", get(list_feature_flags))
+        .route(
+            "/feature-flags/{id}",
+            patch(update_feature_flag).delete(delete_feature_flag),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.admin_key.clone(),
             auth_middleware,
@@ -641,6 +646,68 @@ async fn delete_user_notice(Path(id): Path<String>) -> Response {
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             warn!(error = %e, "Failed to delete user notice");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+// --- Feature flags ---
+
+async fn list_feature_flags() -> impl IntoResponse {
+    match admin::feature_flags::list().await {
+        Ok(flags) => axum::Json(flags).into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to list feature flags");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateFeatureFlagRequest {
+    state: crate::feature_flags::FlagState,
+    description: String,
+    user_ids: Vec<String>,
+}
+
+async fn update_feature_flag(
+    Path(id): Path<i64>,
+    axum::Json(body): axum::Json<UpdateFeatureFlagRequest>,
+) -> Response {
+    let result =
+        admin::feature_flags::update(id, body.state, &body.description, &body.user_ids).await;
+    match result {
+        Ok(flag) => {
+            crate::feature_flags::reload().await;
+            crate::server::routes::v1::broadcast_feature_flags_changed();
+            axum::Json(flag).into_response()
+        }
+        Err(admin::feature_flags::UpdateFlagError::NotFound) => {
+            StatusCode::NOT_FOUND.into_response()
+        }
+        Err(admin::feature_flags::UpdateFlagError::UnknownUsers(missing)) => (
+            StatusCode::BAD_REQUEST,
+            format!("Unknown user ids: {}", missing.join(", ")),
+        )
+            .into_response(),
+        Err(admin::feature_flags::UpdateFlagError::Db(e)) => {
+            warn!(error = %e, id, "Failed to update feature flag");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn delete_feature_flag(Path(id): Path<i64>) -> Response {
+    match admin::feature_flags::delete(id).await {
+        Ok(true) => {
+            crate::feature_flags::reload().await;
+            crate::server::routes::v1::broadcast_feature_flags_changed();
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, id, "Failed to delete feature flag");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

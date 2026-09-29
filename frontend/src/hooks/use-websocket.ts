@@ -11,6 +11,7 @@ import { processMessage, handleStopsUpdate } from "./use-stops";
 import { useStore } from "@/store";
 import { toast } from "sonner";
 import { authStore, sessionToken, clearAuth } from "@/auth-store";
+import { setFeatureFlags } from "@/feature-flags-store";
 
 function sendAuthMessage(ws: WebSocket, token: string | null) {
   ws.send(JSON.stringify({ v: 1, t: "auth", d: token }));
@@ -41,6 +42,10 @@ export function useWebSocket() {
           if (typeof data === "object" && "toast" in data) {
             const { message, type: toastType, duration } = data.toast;
             toast[toastType](message, { duration });
+            return;
+          }
+          if (typeof data === "object" && "featureFlags" in data) {
+            setFeatureFlags(data.featureFlags);
             return;
           }
           processMessage(response.data);

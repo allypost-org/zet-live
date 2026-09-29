@@ -12,6 +12,7 @@ use crate::{
     admin, auth,
     cli::ServerConfig,
     database::Database,
+    feature_flags,
     proto::{gbfs, gtfs_realtime, gtfs_schedule},
 };
 
@@ -22,6 +23,8 @@ pub async fn run(server_config: &ServerConfig) -> anyhow::Result<()> {
         error!(%e, "Failed to initialize database");
         return Err(anyhow::anyhow!(e).context("Failed to initialize database"));
     }
+
+    feature_flags::init().await;
 
     auth::config::init(server_config).await;
     debug!(

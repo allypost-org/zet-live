@@ -61,7 +61,8 @@ export const v1MessageSchema = versionedSchema(
           z.tuple([z.string(), z.string().nullable(), z.number(), z.number()]).rest(z.unknown()),
         ),
       }),
-    ),
+    )
+    .or(z.object({ featureFlags: z.record(z.string(), z.boolean()) })),
 );
 
 export type V1Message = z.infer<typeof v1MessageSchema>;

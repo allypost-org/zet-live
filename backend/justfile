@@ -52,6 +52,7 @@ test *args:
     SQLX_OFFLINE=true \
     RUSTFLAGS='{{ rustflags }}' \
     cargo test \
+        --target '{{ rust_target }}' \
         --workspace \
         --all-features \
         -- "$@" \
@@ -70,12 +71,14 @@ fmt-dev: lint-fix && fmt
     rustup run nightly cargo fmt --all \
 
 lint:
+    SQLX_OFFLINE=true \
     cargo clippy \
         --workspace \
         --all-features \
         -- \
 
 lint-fix:
+    SQLX_OFFLINE=true \
     cargo clippy \
         --fix \
         --allow-dirty \

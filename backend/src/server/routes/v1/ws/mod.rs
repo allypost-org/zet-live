@@ -248,6 +248,18 @@ async fn handle_transmission(
                 .await
                 .is_ok()
         }
+        Transmission::FeatureFlagsChanged => {
+            let flags = crate::feature_flags::enabled_map(user_id);
+            let versioned = Versioned::new(1, Broadcast::FeatureFlags(flags));
+            let Ok(bytes) = minicbor_serde::to_vec(&versioned) else {
+                warn!(?addr, "Failed to serialize feature-flags broadcast");
+                return true;
+            };
+            sender
+                .send(Message::Binary(Bytes::from(bytes)))
+                .await
+                .is_ok()
+        }
         Transmission::Empty => true,
     }
 }

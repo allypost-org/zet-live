@@ -200,6 +200,13 @@ pub async fn broadcast_notices(notices: &[GlobalNotice]) {
     }
 }
 
+/// Tell every WS connection to re-evaluate and push its own feature-flag set.
+pub fn broadcast_feature_flags_changed() {
+    if let Some(state) = V1_APP_STATE.get() {
+        state.send_transmission(Transmission::FeatureFlagsChanged);
+    }
+}
+
 async fn feed_listener(app_state: Arc<V1AppState>) {
     if let Some(feed) = get_cached_feed().await {
         process_feed(app_state.clone(), feed);
@@ -1057,6 +1064,9 @@ pub enum Broadcast {
     Toast(ToastData),
     GbfsStations(Vec<Vec<MixedValue>>),
     SimpleStops(Vec<Vec<MixedValue>>),
+    /// The connection's full feature-flag set (only enabled flags, mapped to
+    /// `true`). Whole-map replacement.
+    FeatureFlags(std::collections::HashMap<String, bool>),
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -1078,6 +1088,9 @@ pub enum Transmission {
         user_id: String,
         bytes: Bytes,
     },
+    /// Feature flags changed; every connection task evaluates and sends its
+    /// own (user-specific) enabled-flag map.
+    FeatureFlagsChanged,
 }
 
 /// Push a per-account notice update to a single account's connections.

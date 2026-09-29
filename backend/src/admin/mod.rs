@@ -5,6 +5,7 @@ use tracing::{debug, error, info, trace};
 
 use crate::{cli::ServerConfig, database::Database};
 
+pub mod feature_flags;
 pub mod feedback;
 pub mod metadata;
 pub mod router;

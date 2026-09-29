@@ -174,3 +174,33 @@ export type ToastPayload = z.infer<typeof toastPayloadSchema>;
 
 export const feedbackFilterSchema = z.enum(["all", "new", "archived"]);
 export type FeedbackFilter = z.infer<typeof feedbackFilterSchema>;
+
+export const flagStateSchema = z.enum(["disabled", "enabled", "loggedIn", "scoped"]);
+export const flagStates = flagStateSchema.options;
+export type FlagState = z.infer<typeof flagStateSchema>;
+
+export const scopedUserSchema = z.object({
+  id: z.string(),
+  displayName: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
+});
+export type ScopedUser = z.infer<typeof scopedUserSchema>;
+
+export const featureFlagRowSchema = z.object({
+  id: z.number(),
+  key: z.string(),
+  description: z.string(),
+  state: flagStateSchema,
+  updatedAt: z.string(),
+  orphaned: z.boolean(),
+  scopedUsers: z.array(scopedUserSchema),
+});
+export type FeatureFlagRow = z.infer<typeof featureFlagRowSchema>;
+
+export const featureFlagUpdateSchema = z.object({
+  state: flagStateSchema,
+  description: z.string(),
+  userIds: z.array(z.string()),
+});
+export type FeatureFlagUpdate = z.infer<typeof featureFlagUpdateSchema>;

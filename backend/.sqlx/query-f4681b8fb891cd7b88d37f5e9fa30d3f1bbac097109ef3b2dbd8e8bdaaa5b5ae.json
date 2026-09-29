@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT key   AS \"key!: String\",\n               state AS \"state!: String\"\n        FROM feature_flags\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "key!: String",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "feature_flags",
+            "name": "key"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "state!: String",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "feature_flags",
+            "name": "state"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f4681b8fb891cd7b88d37f5e9fa30d3f1bbac097109ef3b2dbd8e8bdaaa5b5ae"
+}

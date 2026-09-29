@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO feature_flags (key)\n         SELECT x FROM unnest($1::text[]) AS x\n         ON CONFLICT (key) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "107e98d0ea1358e0e5c446357709b1203b583d2bc016b011d422ceaacb4931b0"
+}
