@@ -119,3 +119,13 @@ migrations-add $name="":
         read -p "Enter migration name: " name; \
     fi; \
     sqlx migrate add -r "$name" \
+
+dev-db:
+    docker run \
+      --name zet-live-pg \
+      -e POSTGRES_USER=zet_live \
+      -e POSTGRES_PASSWORD=zet_live \
+      -e POSTGRES_DB=zet_live \
+      -p 127.0.0.1:5436:5432 \
+      postgres:18 \
+    ;
