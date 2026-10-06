@@ -61,6 +61,9 @@ pub async fn fetch_live_arrivals(
         live_arrival_delay: Option<i32>,
         arrival_time_seconds: Option<i32>,
         effective_delay: Option<i32>,
+        anchor_arrival_time: Option<i32>,
+        anchor_arrival_delay: Option<i32>,
+        anchor_offset: Option<i32>,
     }
 
     let global_base_midnight = Database::logged(
@@ -90,6 +93,9 @@ pub async fn fetch_live_arrivals(
             , lst.arrival_time  AS live_arrival_time
             , lst.arrival_delay AS live_arrival_delay
             , gst.arrival_time_seconds
+            , anchor.arrival_time AS anchor_arrival_time
+            , anchor.arrival_delay AS anchor_arrival_delay
+            , anchor.arrival_time_seconds AS anchor_offset
             , (
                 SELECT
                     lst2.arrival_delay
@@ -104,6 +110,18 @@ pub async fn fetch_live_arrivals(
         LEFT JOIN live_trip_stop_times lst
             ON  lst.trip_id = lv.trip_id
             AND lst.stop_sequence = gst.stop_sequence
+        LEFT JOIN LATERAL (
+            SELECT observed.arrival_time, observed.arrival_delay, scheduled.arrival_time_seconds
+            FROM live_trip_stop_times observed
+            JOIN gtfs_stop_times scheduled
+                ON scheduled.trip_key = lv.trip_key
+                AND scheduled.stop_sequence = observed.stop_sequence
+            WHERE observed.trip_id = lv.trip_id
+                AND observed.arrival_time IS NOT NULL
+                AND scheduled.arrival_time_seconds IS NOT NULL
+            ORDER BY observed.stop_sequence
+            LIMIT 1
+        ) anchor ON TRUE
         WHERE gst.stop_id = ANY($1)
         ORDER BY gst.stop_sequence
         "#,
@@ -112,23 +130,6 @@ pub async fn fetch_live_arrivals(
         .fetch_all(&Database::pool()),
     )
     .await?;
-
-    let mut trip_base_midnight = HashMap::new();
-    for row in &rows {
-        if let (Some(live_time), Some(offset)) = (row.live_arrival_time, row.arrival_time_seconds) {
-            let delay = row.live_arrival_delay.unwrap_or(0);
-            if let Some(computed) = try_infer_base_midnight(
-                i64::from(live_time),
-                i64::from(delay),
-                i64::from(offset),
-                now,
-            ) {
-                trip_base_midnight
-                    .entry(row.trip_id.clone())
-                    .or_insert(computed);
-            }
-        }
-    }
 
     let mut trip_ids = HashSet::new();
     let mut seen_vehicles = HashSet::new();
@@ -147,9 +148,19 @@ pub async fn fetch_live_arrivals(
             continue;
         }
 
-        let base_midnight = trip_base_midnight
-            .get(&row.trip_id)
-            .copied()
+        // After midnight, different trips can belong to different service days.
+        // Use an observation anywhere on this trip, even outside the selected stops.
+        let base_midnight = row
+            .anchor_arrival_time
+            .zip(row.anchor_offset)
+            .and_then(|(time, offset)| {
+                try_infer_base_midnight(
+                    i64::from(time),
+                    i64::from(row.anchor_arrival_delay.unwrap_or(0)),
+                    i64::from(offset),
+                    now,
+                )
+            })
             .unwrap_or(global_base_midnight);
 
         let predicted = if row.live_arrival_time.is_some() {

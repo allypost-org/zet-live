@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n              lv.vehicle_id\n            , lv.trip_id\n            , lv.trip_key AS \"trip_key!\"\n            , lv.trip_headsign\n            , lv.route_id\n            , gst.stop_id\n            , gst.stop_sequence\n            , lv.next_stop_sequence\n            , lst.arrival_time  AS live_arrival_time\n            , lst.arrival_delay AS live_arrival_delay\n            , gst.arrival_time_seconds\n            , (\n                SELECT\n                    lst2.arrival_delay\n                FROM live_trip_stop_times lst2\n                WHERE   lst2.trip_id = lv.trip_id\n                    AND lst2.stop_sequence <= gst.stop_sequence\n                    AND lst2.arrival_delay IS NOT NULL\n                ORDER BY lst2.stop_sequence DESC LIMIT 1\n            ) AS effective_delay\n        FROM live_vehicles lv\n        JOIN gtfs_stop_times gst ON gst.trip_key = lv.trip_key\n        LEFT JOIN live_trip_stop_times lst\n            ON  lst.trip_id = lv.trip_id\n            AND lst.stop_sequence = gst.stop_sequence\n        WHERE gst.stop_id = ANY($1)\n        ORDER BY gst.stop_sequence\n        ",
+  "query": "\n        SELECT\n              lv.vehicle_id\n            , lv.trip_id\n            , lv.trip_key AS \"trip_key!\"\n            , lv.trip_headsign\n            , lv.route_id\n            , gst.stop_id\n            , gst.stop_sequence\n            , lv.next_stop_sequence\n            , lst.arrival_time  AS live_arrival_time\n            , lst.arrival_delay AS live_arrival_delay\n            , gst.arrival_time_seconds\n            , anchor.arrival_time AS anchor_arrival_time\n            , anchor.arrival_delay AS anchor_arrival_delay\n            , anchor.arrival_time_seconds AS anchor_offset\n            , (\n                SELECT\n                    lst2.arrival_delay\n                FROM live_trip_stop_times lst2\n                WHERE   lst2.trip_id = lv.trip_id\n                    AND lst2.stop_sequence <= gst.stop_sequence\n                    AND lst2.arrival_delay IS NOT NULL\n                ORDER BY lst2.stop_sequence DESC LIMIT 1\n            ) AS effective_delay\n        FROM live_vehicles lv\n        JOIN gtfs_stop_times gst ON gst.trip_key = lv.trip_key\n        LEFT JOIN live_trip_stop_times lst\n            ON  lst.trip_id = lv.trip_id\n            AND lst.stop_sequence = gst.stop_sequence\n        LEFT JOIN LATERAL (\n            SELECT observed.arrival_time, observed.arrival_delay, scheduled.arrival_time_seconds\n            FROM live_trip_stop_times observed\n            JOIN gtfs_stop_times scheduled\n                ON scheduled.trip_key = lv.trip_key\n                AND scheduled.stop_sequence = observed.stop_sequence\n            WHERE observed.trip_id = lv.trip_id\n                AND observed.arrival_time IS NOT NULL\n                AND scheduled.arrival_time_seconds IS NOT NULL\n            ORDER BY observed.stop_sequence\n            LIMIT 1\n        ) anchor ON TRUE\n        WHERE gst.stop_id = ANY($1)\n        ORDER BY gst.stop_sequence\n        ",
   "describe": {
     "columns": [
       {
@@ -126,6 +126,39 @@
       },
       {
         "ordinal": 11,
+        "name": "anchor_arrival_time",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_trip_stop_times",
+            "name": "arrival_time"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "anchor_arrival_delay",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "live_trip_stop_times",
+            "name": "arrival_delay"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "anchor_offset",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "arrival_time_seconds"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
         "name": "effective_delay",
         "type_info": "Int4",
         "origin": "Expression"
@@ -148,8 +181,11 @@
       true,
       true,
       true,
+      true,
+      true,
+      true,
       null
     ]
   },
-  "hash": "4b281c3fe6b78e71f61955ad7e763c636940a8baaeda86f739032abe1a8e8f6a"
+  "hash": "739e63ea1e8571f1595ab2c85dfdd91afcc36d9047cdc460185381431ee5798e"
 }
