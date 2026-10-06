@@ -117,7 +117,7 @@ function Row({
 
 function SectionHeader({ label }: { label: string }) {
   return (
-    <div className="text-on-surface-faint col-span-full px-2 pt-2.5 pb-1 text-[11px] font-bold tracking-wide uppercase">
+    <div className="text-on-surface-faint col-span-full px-2 text-xs font-bold tracking-wide uppercase [*+&]:mt-4">
       {label}
     </div>
   );

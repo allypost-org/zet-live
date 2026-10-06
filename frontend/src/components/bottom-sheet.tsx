@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { animate, motion, useDragControls, useMotionValue } from "motion/react";
+import { animate, motion, useMotionValue } from "motion/react";
 import {
   appRequestAnimationFrame,
   cancelAnimationOrIdleCallback,
@@ -41,15 +41,59 @@ export function BottomSheet({
   const [rendered, setRendered] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const y = useMotionValue(0);
-  const dragControls = useDragControls();
+  const height = useMotionValue(0);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const expandedSizeRef = useRef<HTMLDivElement>(null);
+  const maximizedSizeRef = useRef<HTMLDivElement>(null);
+  const dragStartHeight = useRef(0);
+  const dragging = useRef(false);
+  const suppressClick = useRef(false);
 
   const minimized = sheetState === "minimized";
   const maximized = sheetState === "maximized";
 
+  const getHeights = useCallback(() => {
+    const minimizedHeight =
+      (headerRef.current?.offsetHeight ?? 0) + (summaryRef.current?.offsetHeight ?? 0);
+    const expanded = Math.max(minimizedHeight, expandedSizeRef.current?.offsetHeight ?? 0);
+    return {
+      minimized: minimizedHeight,
+      expanded,
+      maximized: Math.max(expanded, maximizedSizeRef.current?.offsetHeight ?? 0),
+    };
+  }, []);
+
   const getDismissY = () => (sheetRef.current?.offsetHeight ?? 400) + 20;
+
+  useLayoutEffect(() => {
+    if (!rendered) return;
+
+    const resize = () => {
+      if (dragging.current) return;
+      const target = getHeights()[sheetState];
+      if (height.get() === 0) height.set(target);
+      else animate(height, target, SPRING);
+    };
+    resize();
+
+    const observer = new ResizeObserver(resize);
+    for (const element of [
+      headerRef.current,
+      summaryRef.current,
+      expandedSizeRef.current,
+      maximizedSizeRef.current,
+    ]) {
+      if (element) observer.observe(element);
+    }
+    return () => {
+      observer.disconnect();
+    };
+  }, [rendered, sheetState, getHeights, height]);
 
   useEffect(() => {
     if (open) {
+      dragging.current = false;
       setSheetState("expanded");
       y.set(2000);
       setRendered(true);
@@ -90,61 +134,63 @@ export function BottomSheet({
         aria-modal="true"
         role="dialog"
         ref={sheetRef}
-        style={{ y }}
-        animate={{
-          maxHeight: maximized ? maximizedHeight : expandedHeight,
-        }}
-        initial={false}
-        drag="y"
-        dragControls={dragControls}
-        dragListener={false}
-        dragConstraints={{ top: -150, bottom: getDismissY() }}
-        dragElastic={0.1}
-        dragMomentum={false}
-        onDragEnd={(_: Event, info: DragInfo) => {
-          const downPastThreshold =
-            info.offset.y > DRAG_THRESHOLD || info.velocity.y > VELOCITY_THRESHOLD;
-          const upPastThreshold =
-            info.offset.y < -DRAG_THRESHOLD || info.velocity.y < -VELOCITY_THRESHOLD;
-
-          if (sheetState === "minimized") {
-            if (downPastThreshold) {
-              animate(y, getDismissY(), { ...SPRING, onComplete: onClose });
-            } else if (upPastThreshold) {
-              animate(y, 0, SPRING);
-              setSheetState("expanded");
-            } else {
-              animate(y, 0, SPRING);
-            }
-          } else if (sheetState === "expanded") {
-            if (downPastThreshold) {
-              animate(y, 0, SPRING);
-              setSheetState("minimized");
-            } else if (upPastThreshold) {
-              animate(y, 0, SPRING);
-              setSheetState("maximized");
-            } else {
-              animate(y, 0, SPRING);
-            }
-          } else {
-            if (downPastThreshold) {
-              animate(y, 0, SPRING);
-              setSheetState("expanded");
-            } else {
-              animate(y, 0, SPRING);
-            }
-          }
-        }}
-        className="bg-surface-overlay pointer-events-auto grid w-full max-w-md grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-xl shadow-lg backdrop-blur-sm"
+        style={{ y, height }}
+        className="bg-surface-overlay pointer-events-auto relative flex w-full max-w-md flex-col overflow-hidden rounded-t-xl shadow-lg backdrop-blur-sm"
         data-minimized={minimized ? "true" : "false"}
         data-maximized={maximized ? "true" : "false"}
       >
-        <div
-          onPointerDown={(e) => {
-            dragControls.start(e);
+        <motion.div
+          ref={headerRef}
+          onPointerDown={() => {
+            suppressClick.current = false;
           }}
-          className="flex shrink-0 cursor-grab items-center justify-between gap-2 px-4 py-3 active:cursor-grabbing"
+          onClickCapture={(event) => {
+            if (suppressClick.current && event.detail !== 0) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
+          onPanStart={() => {
+            dragging.current = true;
+            suppressClick.current = true;
+            height.stop();
+            y.stop();
+            y.set(0);
+            dragStartHeight.current = height.get();
+          }}
+          onPan={(_, info: DragInfo) => {
+            const heights = getHeights();
+            height.set(
+              Math.max(
+                heights.minimized,
+                Math.min(heights.maximized, dragStartHeight.current - info.offset.y),
+              ),
+            );
+          }}
+          onPanEnd={(event, info: DragInfo) => {
+            dragging.current = false;
+            if (event.type === "pointercancel") {
+              animate(height, getHeights()[sheetState], SPRING);
+              return;
+            }
+            const down = info.offset.y > DRAG_THRESHOLD || info.velocity.y > VELOCITY_THRESHOLD;
+            const up = info.offset.y < -DRAG_THRESHOLD || info.velocity.y < -VELOCITY_THRESHOLD;
+            if (sheetState === "minimized" && down) {
+              animate(y, getDismissY(), { ...SPRING, onComplete: onClose });
+              return;
+            }
+            let next = sheetState;
+            if (down) next = maximized ? "expanded" : "minimized";
+            else if (up) next = minimized ? "expanded" : "maximized";
+            setSheetState(next);
+            animate(height, getHeights()[next], SPRING);
+          }}
+          className="relative flex shrink-0 cursor-grab touch-none items-center justify-between gap-2 p-4 pb-0 select-none active:cursor-grabbing max-sm:pb-0"
         >
+          <div
+            aria-hidden="true"
+            className="bg-on-surface-faint/40 absolute top-2 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full"
+          />
           <div
             className="min-w-0 flex-1 select-none"
             onClick={() => {
@@ -153,13 +199,20 @@ export function BottomSheet({
           >
             {title}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div
+            className="flex shrink-0 items-center gap-1"
+            onPointerDownCapture={(event) => {
+              event.stopPropagation();
+              suppressClick.current = false;
+            }}
+          >
             <button
               type="button"
+              aria-label={minimized ? "Expand sheet" : "Minimize sheet"}
               onClick={() => {
                 setSheetState((s) => (s === "minimized" ? "expanded" : "minimized"));
               }}
-              className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-1 transition-colors"
+              className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted flex size-11 items-center justify-center rounded-full transition-colors"
             >
               {minimized ? (
                 <svg
@@ -193,8 +246,9 @@ export function BottomSheet({
             </button>
             <button
               type="button"
+              aria-label="Close sheet"
               onClick={onClose}
-              className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-1 transition-colors"
+              className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted flex size-11 items-center justify-center rounded-full transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -212,32 +266,34 @@ export function BottomSheet({
               </svg>
             </button>
           </div>
-        </div>
-
-        <motion.div
-          animate={{
-            height: minimized ? 0 : "auto",
-            opacity: minimized ? 0 : 1,
-          }}
-          transition={SPRING}
-          className="max-h-full overflow-auto overscroll-y-contain"
-        >
-          {children}
         </motion.div>
 
+        <div
+          aria-hidden={minimized}
+          inert={minimized}
+          className="min-h-0 flex-1 overflow-auto overscroll-y-contain"
+        >
+          {children}
+        </div>
+
         {minimizedBody && (
-          <motion.div
-            animate={{
-              height: minimized ? "auto" : 0,
-              opacity: minimized ? 1 : 0,
-            }}
-            transition={SPRING}
-            className="overflow-hidden"
+          <div
+            ref={summaryRef}
+            aria-hidden={!minimized}
+            className={
+              minimized
+                ? "shrink-0 px-4 pb-3"
+                : "invisible absolute right-0 bottom-0 left-0 px-4 pb-3"
+            }
           >
-            <div className="px-4 pb-3">{minimizedBody}</div>
-          </motion.div>
+            {minimizedBody}
+          </div>
         )}
       </motion.div>
+      <div aria-hidden="true" className="pointer-events-none invisible fixed w-0 overflow-hidden">
+        <div ref={expandedSizeRef} style={{ height: expandedHeight }} />
+        <div ref={maximizedSizeRef} style={{ height: maximizedHeight }} />
+      </div>
     </div>
   );
 }
