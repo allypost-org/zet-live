@@ -512,7 +512,7 @@ pub async fn facebook_deletion(Form(form): Form<FacebookDeletionForm>) -> Respon
         "unknown_user"
     };
 
-    let code = ulid::Ulid::new().to_string();
+    let code = ulid::Ulid::generate().to_string();
 
     if let Err(e) = sqlx::query!(
         "

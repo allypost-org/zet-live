@@ -26,7 +26,7 @@ fn now_db() -> time::OffsetDateTime {
 }
 
 fn new_id() -> String {
-    ulid::Ulid::new().to_string()
+    ulid::Ulid::generate().to_string()
 }
 
 const fn severity_str(s: NoticeSeverity) -> &'static str {

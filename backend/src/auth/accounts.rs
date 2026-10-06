@@ -151,7 +151,7 @@ async fn insert_identity(
             , $9
             )
         ",
-        ulid::Ulid::new().to_string(),
+        ulid::Ulid::generate().to_string(),
         user_id,
         provider_id,
         info.subject,
@@ -183,7 +183,7 @@ pub async fn login(
         });
     }
 
-    let user_id = ulid::Ulid::new().to_string();
+    let user_id = ulid::Ulid::generate().to_string();
     sqlx::query!(
         "
         INSERT INTO users

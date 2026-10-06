@@ -16,7 +16,7 @@ const STATE_MAX_AGE: Duration = Duration::from_mins(10);
 const TOKEN_LEN: usize = 64;
 
 fn new_id() -> String {
-    ulid::Ulid::new().to_string()
+    ulid::Ulid::generate().to_string()
 }
 
 fn random_bytes(len: usize) -> Vec<u8> {

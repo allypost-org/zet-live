@@ -29,7 +29,7 @@ mod well_known;
 struct MakeRequestUlid;
 impl MakeRequestId for MakeRequestUlid {
     fn make_request_id<B>(&mut self, _request: &Request<B>) -> Option<RequestId> {
-        let mut id = ulid::Ulid::new().to_string();
+        let mut id = ulid::Ulid::generate().to_string();
         id.make_ascii_lowercase();
         let val = HeaderValue::from_str(&id).ok()?;
 
