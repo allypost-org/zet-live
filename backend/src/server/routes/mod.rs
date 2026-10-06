@@ -75,7 +75,7 @@ pub fn create_router(ip_source: ClientIpSource) -> Router {
     );
 
     let rest = Router::new()
-        .fallback_service(frontend::create_service())
+        .fallback(frontend::serve_fallback)
         .route(
             "/.well-known/microsoft-identity-association.json",
             get(well_known::microsoft_identity_association_json),

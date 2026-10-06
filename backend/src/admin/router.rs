@@ -73,7 +73,7 @@ pub fn create_admin_router(state: AdminState) -> Router {
 
     Router::new()
         .nest("/api", api)
-        .merge(crate::admin::static_assets::create_service())
+        .fallback(super::static_assets::serve_fallback)
 }
 
 async fn auth_middleware(

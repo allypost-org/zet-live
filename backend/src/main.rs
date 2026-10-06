@@ -13,6 +13,7 @@ mod config;
 mod database;
 mod entity;
 mod feature_flags;
+mod frontend_assets;
 mod http_client;
 mod logger;
 mod proto;

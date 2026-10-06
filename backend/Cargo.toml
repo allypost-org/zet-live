@@ -20,7 +20,6 @@ csv = "1.4.0"
 dotenvy = "0.15.7"
 futures = "0.3.32"
 hmac = "0.13"
-include_dir = { version = "0.7.4", features = ["metadata"] }
 jiff = { version = "0.2.28", features = ["serde"] }
 listenfd = "1.0.2"
 mime = "0.3.17"
@@ -28,6 +27,7 @@ minicbor-serde = { version = "0.7.0", features = ["full"] }
 prost = { version = "0.14.4" }
 rand = "0.10.1"
 reqwest = { version = "0.13.4", features = ["brotli", "cookies", "deflate", "gzip", "hickory-dns", "json", "multipart", "rustls", "stream"] }
+rust-embed = { version = "8.12.0", features = ["compression", "deterministic-timestamps", "interpolate-folder-path", "mime-guess"] }
 rust_decimal = { version = "1", features = ["serde"] }
 serde = { version = "1.0.219", features = ["alloc", "derive"] }
 serde_json = { version = "1.0.150", features = ["alloc"] }
@@ -43,7 +43,6 @@ tokio = { version = "1.52.3", features = ["full"] }
 tokio-util = "0.7.18"
 tower = "0.5.3"
 tower-http = { version = "0.6.11", features = ["full"] }
-tower-serve-static = { version = "0.1.2", features = ["metadata"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json", "parking_lot"] }
 ulid = "1.2.1"
