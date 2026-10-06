@@ -20,7 +20,7 @@ csv = "1.4.0"
 dotenvy = "0.15.7"
 futures = "0.3.34"
 hmac = "0.13"
-jiff = { version = "0.2.38", features = ["serde"] }
+jiff = { version = "0.2.38", features = ["serde", "tzdb-bundle-always"] }
 listenfd = "1.0.2"
 mime = "0.3.17"
 minicbor-serde = { version = "0.7.1", features = ["full"] }
