@@ -15,6 +15,15 @@ install:
 build: _check-install
     bun run build
 
+build-watch:
+    watchexec \
+        --clear=reset \
+        --restart \
+        --debounce '500ms' \
+        --stop-signal 'kill' \
+        -- \
+          just build
+
 dev: _check-install
     bun run dev
 

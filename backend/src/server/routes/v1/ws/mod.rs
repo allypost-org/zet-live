@@ -357,22 +357,26 @@ async fn send_initial_state(
     {
         let vehicles = INITIAL_STATE.vehicles().await.clone();
 
-        let res = sender.send(Message::Binary(vehicles)).await;
+        if !vehicles.is_empty() {
+            let res = sender.send(Message::Binary(vehicles)).await;
 
-        if let Err(e) = res {
-            error!(?e, "Error sending initial vehicles");
-            return Err(e);
+            if let Err(e) = res {
+                error!(?e, "Error sending initial vehicles");
+                return Err(e);
+            }
         }
     }
 
     {
         let active_stops = INITIAL_STATE.active_stops().await.clone();
 
-        let res = sender.send(Message::Binary(active_stops)).await;
+        if !active_stops.is_empty() {
+            let res = sender.send(Message::Binary(active_stops)).await;
 
-        if let Err(e) = res {
-            error!(?e, "Error sending initial active stops");
-            return Err(e);
+            if let Err(e) = res {
+                error!(?e, "Error sending initial active stops");
+                return Err(e);
+            }
         }
     }
 

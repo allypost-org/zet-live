@@ -165,42 +165,48 @@ addEventListener("message", (e: MessageEvent) => {
 });
 
 async function handleProcessMessage(eventData: Blob) {
-  const gotEvent = performance.now();
-  const buffer = new Uint8Array(await new Response(eventData).arrayBuffer());
-  const data = decodeCbor(buffer);
-  const endDecode = performance.now();
+  if (eventData.size === 0) return;
 
-  const validated = v1MessageSchema.safeParse(data);
-  const endValidate = performance.now();
+  try {
+    const gotEvent = performance.now();
+    const buffer = new Uint8Array(await new Response(eventData).arrayBuffer());
+    const data = decodeCbor(buffer);
+    const endDecode = performance.now();
 
-  if (DEBUG) {
-    console.log("[WORKER]", "Data parse timings", {
-      decode: endDecode - gotEvent,
-      validation: endValidate - endDecode,
-      total: endValidate - gotEvent,
+    const validated = v1MessageSchema.safeParse(data);
+    const endValidate = performance.now();
+
+    if (DEBUG) {
+      console.log("[WORKER]", "Data parse timings", {
+        decode: endDecode - gotEvent,
+        validation: endValidate - endDecode,
+        total: endValidate - gotEvent,
+      });
+    }
+
+    if (!validated.success) {
+      console.error(validated.error);
+      return;
+    }
+
+    postMessage({
+      type: "processed-message",
+      data: validated.data,
     });
-  }
 
-  if (!validated.success) {
-    console.error(validated.error);
-    return;
-  }
+    const stops = extractStopsFromMessage(validated.data.d);
+    if (stops) {
+      postMessage(handleProcessedStops(stops));
+      return;
+    }
 
-  postMessage({
-    type: "processed-message",
-    data: validated.data,
-  });
-
-  const stops = extractStopsFromMessage(validated.data.d);
-  if (stops) {
-    postMessage(handleProcessedStops(stops));
-    return;
-  }
-
-  const activeStopIds = extractActiveStopIdsFromMessage(validated.data.d);
-  if (activeStopIds) {
-    postMessage(handleActiveStopIds(activeStopIds));
-    return;
+    const activeStopIds = extractActiveStopIdsFromMessage(validated.data.d);
+    if (activeStopIds) {
+      postMessage(handleActiveStopIds(activeStopIds));
+      return;
+    }
+  } catch (error) {
+    console.error("[WORKER]", "Failed to process realtime message", error);
   }
 }
 
