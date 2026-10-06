@@ -34,14 +34,23 @@ export type VehicleSelection = {
   followEnabled: boolean;
 };
 
+export type StopDepartureBoard = {
+  stopId: string;
+  departures: Departure[] | null;
+  destinations: string[];
+  routes: string[];
+  scheduleEnd: Date | null;
+  lastUpdated: number | null;
+  fetchError: string | null;
+};
+
 export type StopSelection = {
   name: string;
   routes: string[];
   tripIds: Set<string> | null;
   arrivalTimes: StopArrivalTime[] | null;
-  departures: Departure[] | null;
-  scheduleEnd: Date | null;
-  departuresLastUpdated: number | null;
+  departureBoards: StopDepartureBoard[];
+  focusedStopId: string | null;
   fetchError: string | null;
 };
 
@@ -84,6 +93,7 @@ export type StoreState = {
 
   selectVehicle: (id: string, tripId: string, flyTo?: boolean) => void;
   selectStop: (ids: string[]) => void;
+  focusStop: (id: string | null) => void;
   selectGbfsStation: (id: string, flyTo?: boolean) => void;
   clearSelection: () => void;
   setFollowEnabled: (enabled: boolean) => void;
@@ -178,7 +188,10 @@ export const useStore = create<StoreState>()(
       }
     },
 
-    selectStop: (ids) => {
+    selectStop: (stopIds) => {
+      const ids = [...new Set(stopIds)].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true }),
+      );
       const { simpleStops } = get();
       const name = resolveStopDisplayName(ids, simpleStops);
 
@@ -189,14 +202,28 @@ export const useStore = create<StoreState>()(
           routes: [],
           tripIds: null,
           arrivalTimes: null,
-          departures: null,
-          scheduleEnd: null,
-          departuresLastUpdated: null,
+          departureBoards: ids.map((stopId) => ({
+            stopId,
+            departures: null,
+            destinations: [],
+            routes: [],
+            scheduleEnd: null,
+            lastUpdated: null,
+            fetchError: null,
+          })),
+          focusedStopId: null,
           fetchError: null,
         },
         vehicleSelection: null,
         displayedStops: buildStopDisplayedStops(ids, simpleStops),
       });
+    },
+
+    focusStop: (id) => {
+      const { selection, stopSelection } = get();
+      if (selection?.type !== "stop" || !stopSelection) return;
+      if (id !== null && !selection.ids.includes(id)) return;
+      set({ stopSelection: { ...stopSelection, focusedStopId: id } });
     },
 
     selectGbfsStation: (id, flyTo = false) => {

@@ -6,7 +6,8 @@ import { GbfsStationSheet } from "@/components/gbfs-station-sheet";
 import { StatusBar } from "@/components/status-bar";
 import { SearchBar } from "@/components/search-bar";
 import { LoadingScreen } from "@/components/loading-screen";
-import { DeparturesBoard, DepartureSummary } from "@/components/departures-board";
+import { DepartureSummary } from "@/components/departures-board";
+import { GroupedStopDepartures } from "@/components/grouped-stop-departures";
 import { LineBadge } from "@/components/line-badge";
 import { Toaster } from "sonner";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -82,9 +83,16 @@ export function App() {
 
   const tripStopTimes = vehicleSelection?.tripStopTimes ?? null;
   const stopArrivalTimes = stopSelection?.arrivalTimes ?? null;
-  const stopDepartures = stopSelection?.departures ?? null;
-  const stopScheduleEnd = stopSelection?.scheduleEnd ?? null;
-  const stopFetchError = stopSelection?.fetchError ?? null;
+  const visibleBoards = stopSelection?.departureBoards.filter(
+    (board) => stopSelection.focusedStopId === null || board.stopId === stopSelection.focusedStopId,
+  );
+  const stopDepartures = visibleBoards
+    ?.flatMap((board) => board.departures ?? [])
+    .sort((a, b) => {
+      const aTime = a.kind === "live" ? a.predictedTime : a.scheduledTime;
+      const bTime = b.kind === "live" ? b.predictedTime : b.scheduledTime;
+      return aTime.getTime() - bTime.getTime();
+    });
   const tripFetchError = vehicleSelection?.fetchError ?? null;
   const followEnabled = vehicleSelection?.followEnabled ?? false;
 
@@ -167,10 +175,15 @@ export function App() {
       <span className="text-on-surface truncate text-sm font-bold">{selectedStop.name}</span>
     );
 
-    if (stopBoardFlag && stopDepartures !== null && stopDepartures.length > 0) {
+    if (stopBoardFlag && stopDepartures !== undefined && stopDepartures.length > 0) {
       const nextLive = stopDepartures.find((d) => d.kind === "live");
       const next = nextLive ?? stopDepartures[0]!;
-      minimizedBody = <DepartureSummary departure={next} stale={stopFetchError !== null} />;
+      minimizedBody = (
+        <DepartureSummary
+          departure={next}
+          stale={visibleBoards?.some((board) => board.fetchError !== null) ?? false}
+        />
+      );
     } else if (!stopBoardFlag && stopArrivalTimes !== null) {
       const firstArrival = stopArrivalTimes.find((a) => a.arrivalTime !== null);
       if (firstArrival) {
@@ -261,12 +274,9 @@ export function App() {
               onStopClick={selectStop}
             />
           ) : selectedStop ? (
-            stopBoardFlag ? (
-              <DeparturesBoard
-                departures={stopDepartures}
-                scheduleEnd={stopScheduleEnd}
-                fetchError={stopFetchError}
-                lastUpdated={stopSelection?.departuresLastUpdated ?? null}
+            stopBoardFlag && stopSelection ? (
+              <GroupedStopDepartures
+                stopSelection={stopSelection}
                 onVehicleClick={(vehicleId, tripId) => {
                   selectVehicle(vehicleId, tripId, true);
                 }}

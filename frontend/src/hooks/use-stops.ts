@@ -7,7 +7,6 @@ import {
   stopTripsResponseSchema,
   stopDeparturesResponseSchema,
   type Departure,
-  type ApiError,
 } from "@/app/entity/v1/api";
 import { VehicleV1 } from "@/app/entity/v1/vehicle";
 import { StopV1 } from "@/app/entity/v1/stop";
@@ -343,14 +342,64 @@ async function refreshStopArrivalTimes(stopIds: string[]) {
 let stopDeparturesAbort: AbortController | null = null;
 let stopDeparturesRefreshAbort: AbortController | null = null;
 
-function recordDeparturesError(error: ApiError) {
-  const permanent = [400, 401, 403, 404, 422].includes(error.status);
-  patchStopSelection({
-    fetchError: error.error,
-    ...(permanent
-      ? { departures: null, tripIds: null, scheduleEnd: null, departuresLastUpdated: null }
-      : {}),
-  });
+async function loadStopDepartureBoards(stopIds: string[], signal: AbortSignal, silent: boolean) {
+  const isStale = () => {
+    const sel = useStore.getState().selection;
+    return !stopDeparturesEnabled() || sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
+  };
+  let notified = false;
+
+  await Promise.all(
+    stopIds.map(async (stopId) => {
+      const queryParams = new URLSearchParams({ stop: stopId });
+      const result = await apiFetch(
+        `${API_URL}/v1/schedule/stop-departures?${queryParams.toString()}`,
+        stopDeparturesResponseSchema,
+        { signal },
+      );
+      if (signal.aborted || isStale()) return;
+
+      const current = useStore.getState().stopSelection;
+      if (!current) return;
+      const departureBoards = current.departureBoards.map((board) => {
+        if (board.stopId !== stopId) return board;
+        if (result.error) {
+          const permanent = [400, 401, 403, 404, 422].includes(result.error.status);
+          return {
+            ...board,
+            fetchError: result.error.error,
+            ...(permanent ? { departures: null, scheduleEnd: null, lastUpdated: null } : {}),
+          };
+        }
+        const { departures, scheduleEnd } = result.data.d;
+        return {
+          ...board,
+          departures,
+          destinations: [...new Set([...board.destinations, ...departures.map((d) => d.headsign)])]
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b)),
+          routes: [...new Set([...board.routes, ...departures.map((d) => d.routeId)])].sort(
+            (a, b) => a.localeCompare(b, undefined, { numeric: true }),
+          ),
+          scheduleEnd: scheduleEnd === null ? null : new Date(scheduleEnd * 1000),
+          lastUpdated: Date.now(),
+          fetchError: null,
+        };
+      });
+      const tripIds = new Set(
+        departureBoards.flatMap((board) =>
+          (board.departures ?? [])
+            .filter((d): d is Extract<Departure, { kind: "live" }> => d.kind === "live")
+            .map((d) => d.tripId),
+        ),
+      );
+      patchStopSelection({ departureBoards, tripIds });
+      if (result.error && !silent && !notified && result.error.status !== 404) {
+        notified = true;
+        toast.error("Failed to load departures", { description: result.error.error });
+      }
+    }),
+  );
 }
 
 export async function fetchStopDepartures(stopIds: string[], silent = false) {
@@ -359,91 +408,13 @@ export async function fetchStopDepartures(stopIds: string[], silent = false) {
   stopTripsAbort?.abort();
   stopTripsRefreshAbort?.abort();
   stopDeparturesAbort = new AbortController();
-  const { signal } = stopDeparturesAbort;
-
-  const isStale = () => {
-    const sel = useStore.getState().selection;
-    return !stopDeparturesEnabled() || sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
-  };
-
-  const queryParams = new URLSearchParams();
-  for (const stopId of stopIds) {
-    queryParams.append("stop", stopId);
-  }
-
-  const result = await apiFetch(
-    `${API_URL}/v1/schedule/stop-departures?${queryParams.toString()}`,
-    stopDeparturesResponseSchema,
-    { signal },
-  );
-
-  if (signal.aborted || isStale()) return;
-
-  if (result.error) {
-    recordDeparturesError(result.error);
-    if (!silent && result.error.status !== 404) {
-      toast.error("Failed to load departures", { description: result.error.error });
-    }
-    return;
-  }
-
-  const liveTripIds = new Set(
-    result.data.d.departures
-      .filter((d): d is Extract<Departure, { kind: "live" }> => d.kind === "live")
-      .map((d) => d.tripId),
-  );
-
-  patchStopSelection({
-    departures: result.data.d.departures,
-    scheduleEnd:
-      result.data.d.scheduleEnd === null ? null : new Date(result.data.d.scheduleEnd * 1000),
-    tripIds: liveTripIds,
-    fetchError: null,
-    departuresLastUpdated: Date.now(),
-  });
+  await loadStopDepartureBoards(stopIds, stopDeparturesAbort.signal, silent);
 }
 
 async function refreshStopDepartures(stopIds: string[]) {
   stopDeparturesRefreshAbort?.abort();
   stopDeparturesRefreshAbort = new AbortController();
-  const { signal } = stopDeparturesRefreshAbort;
-
-  const isStale = () => {
-    const sel = useStore.getState().selection;
-    return !stopDeparturesEnabled() || sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
-  };
-
-  const queryParams = new URLSearchParams();
-  for (const stopId of stopIds) {
-    queryParams.append("stop", stopId);
-  }
-
-  const result = await apiFetch(
-    `${API_URL}/v1/schedule/stop-departures?${queryParams.toString()}`,
-    stopDeparturesResponseSchema,
-    { signal },
-  );
-
-  if (signal.aborted || isStale()) return;
-  if (result.error) {
-    recordDeparturesError(result.error);
-    return;
-  }
-
-  const liveTripIds = new Set(
-    result.data.d.departures
-      .filter((d): d is Extract<Departure, { kind: "live" }> => d.kind === "live")
-      .map((d) => d.tripId),
-  );
-
-  patchStopSelection({
-    departures: result.data.d.departures,
-    scheduleEnd:
-      result.data.d.scheduleEnd === null ? null : new Date(result.data.d.scheduleEnd * 1000),
-    tripIds: liveTripIds,
-    fetchError: null,
-    departuresLastUpdated: Date.now(),
-  });
+  await loadStopDepartureBoards(stopIds, stopDeparturesRefreshAbort.signal, true);
 }
 
 export async function fetchStopTrips(stopIds: string[]) {

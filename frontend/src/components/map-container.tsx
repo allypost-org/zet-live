@@ -32,6 +32,7 @@ import {
   appRequestAnimationFrame,
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
+import { boardingLocationLabel } from "@/app/boarding-location";
 import { useFeatureFlag } from "@/feature-flags-store";
 
 /** Zoom at and above which all stops are shown (not just active ones). */
@@ -245,7 +246,12 @@ export function MapContainer() {
   const flyToTarget = useStore((s) => s.flyToTarget);
 
   const selectedVehicleId = selection?.type === "vehicle" ? selection.id : null;
-  const selectedStopTripIds = stopSelection?.tripIds ?? null;
+  const focusedStopId = stopBoardFlag ? (stopSelection?.focusedStopId ?? null) : null;
+  const selectedStopTripIds = useMemo(() => {
+    if (focusedStopId === null) return stopSelection?.tripIds ?? null;
+    const board = stopSelection?.departureBoards.find((entry) => entry.stopId === focusedStopId);
+    return new Set((board?.departures ?? []).flatMap((d) => (d.kind === "live" ? [d.tripId] : [])));
+  }, [stopSelection, focusedStopId]);
   const selectedGbfsStationId = selection?.type === "gbfs-station" ? selection.id : null;
   const gbfsLayerVisible =
     showGbfsStations && (selection === null || selection.type === "gbfs-station");
@@ -256,32 +262,48 @@ export function MapContainer() {
     selectedVehicleId !== null ? (vehicles.get(`vehicle-${selectedVehicleId}`) ?? null) : null;
   const nextStopId = selectedVehicle?.nextStopId ?? null;
 
-  const handleClick = useCallback((e: MapLayerMouseEvent) => {
-    const vehicleFeature = e.features?.find((x) => x.source === "vehicles");
-    if (vehicleFeature) {
-      const props = vehicleFeature.properties as Record<string, unknown>;
-      useStore.getState().selectVehicle(String(props.id), String(props.tripId), true);
-      return;
-    }
+  const handleClick = useCallback(
+    (e: MapLayerMouseEvent) => {
+      const vehicleFeature = e.features?.find((x) => x.source === "vehicles");
+      if (vehicleFeature) {
+        const props = vehicleFeature.properties as Record<string, unknown>;
+        useStore.getState().selectVehicle(String(props.id), String(props.tripId), true);
+        return;
+      }
 
-    const stationFeature = e.features?.find((x) => x.source === "gbfs-stations");
-    if (stationFeature) {
-      const props = stationFeature.properties as Record<string, unknown>;
-      useStore.getState().selectGbfsStation(String(props.id), true);
-      return;
-    }
+      const stationFeature = e.features?.find((x) => x.source === "gbfs-stations");
+      if (stationFeature) {
+        const props = stationFeature.properties as Record<string, unknown>;
+        useStore.getState().selectGbfsStation(String(props.id), true);
+        return;
+      }
 
-    const stopFeature = e.features?.find((x) => x.source === "route-stops");
-    if (stopFeature) {
-      const stopIds = JSON.parse(
-        ((stopFeature.properties as Record<string, unknown>)?.ids as string) ?? "[]",
-      ) as string[];
-      useStore.getState().selectStop(stopIds);
-      return;
-    }
+      const stopFeature =
+        e.features?.find((x) => x.layer.id === "route-stop-dot") ??
+        e.features?.find((x) => x.source === "route-stops");
+      if (stopFeature) {
+        const stopIds = JSON.parse(
+          ((stopFeature.properties as Record<string, unknown>)?.ids as string) ?? "[]",
+        ) as string[];
+        const state = useStore.getState();
+        if (
+          state.selection?.type === "stop" &&
+          state.stopSelection &&
+          stopBoardFlag &&
+          stopIds.length === 1 &&
+          state.selection.ids.includes(stopIds[0]!)
+        ) {
+          state.focusStop(stopIds[0]!);
+        } else {
+          state.selectStop(stopIds);
+        }
+        return;
+      }
 
-    useStore.getState().clearSelection();
-  }, []);
+      useStore.getState().clearSelection();
+    },
+    [stopBoardFlag],
+  );
 
   const handleMapData = useCallback((e: MapStyleDataEvent | MapSourceDataEvent) => {
     if (e.dataType === "style") {
@@ -469,7 +491,11 @@ export function MapContainer() {
       features: filtered.map((stop) => ({
         type: "Feature" as const,
         properties: {
-          name: stop.name,
+          name:
+            stopBoardFlag && selection?.type === "stop" && selection.ids.length > 1
+              ? `${boardingLocationLabel(selection.ids.indexOf(stop.ids[0]!))} · ${stop.name}`
+              : stop.name,
+          focused: focusedStopId !== null && stop.ids.includes(focusedStopId),
           ids: JSON.stringify(stop.ids),
           isNext: nextStopId !== null && stop.ids.includes(nextStopId),
           active: showAllStops && hasActive ? stop.ids.some((id) => activeStopIds.has(id)) : true,
@@ -480,7 +506,16 @@ export function MapContainer() {
         },
       })),
     };
-  }, [baseStops, nextStopId, searchMatchedStopIds, activeStopIds, showAllStops]);
+  }, [
+    baseStops,
+    nextStopId,
+    searchMatchedStopIds,
+    activeStopIds,
+    showAllStops,
+    selection,
+    stopBoardFlag,
+    focusedStopId,
+  ]);
   useRafSetData(mapRef, "route-stops", routeStopsFeatures, styleReady);
 
   const followingRouteFeatures = useMemo(
@@ -560,7 +595,13 @@ export function MapContainer() {
           hash
           // @ts-expect-error antialias exists in maplibre-gl but not in mapbox-gl types
           antialias
-          interactiveLayerIds={["route-stops-label", "vehicle-markers", "gbfs-station-markers"]}
+          interactiveLayerIds={[
+            "route-stops-label",
+            "route-stop-dot",
+            "focused-boarding-location",
+            "vehicle-markers",
+            "gbfs-station-markers",
+          ]}
           onClick={handleClick}
           onData={handleMapData}
           onDragStart={onDragStart}
@@ -585,6 +626,23 @@ export function MapContainer() {
             showAccuracyCircle
             showUserLocation
           />
+
+          {styleReady ? (
+            <Layer
+              id="focused-boarding-location"
+              source="route-stops"
+              type="circle"
+              beforeId="route-stop-dot"
+              filter={["==", ["get", "focused"], true]}
+              paint={{
+                "circle-radius": 10,
+                "circle-color": "#2563eb",
+                "circle-opacity": 0.2,
+                "circle-stroke-color": "#2563eb",
+                "circle-stroke-width": 2,
+              }}
+            />
+          ) : null}
 
           {iconsReady && (
             <Source id="vehicles" type="geojson" data={emptyGeoJSON}>

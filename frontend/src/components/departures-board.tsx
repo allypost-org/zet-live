@@ -9,6 +9,7 @@ type Props = {
   fetchError: string | null;
   lastUpdated: number | null;
   onVehicleClick: (vehicleId: string, tripId: string) => void;
+  preview?: boolean;
 };
 
 /** Countdown/delay threshold: below this many seconds of |delay| a live row
@@ -129,12 +130,13 @@ export function DeparturesBoard({
   fetchError,
   lastUpdated,
   onVehicleClick,
+  preview = false,
 }: Props) {
   const now = useNow();
 
   if (departures === null && fetchError === null) {
     return (
-      <div className="space-y-2 px-4 pb-3">
+      <div className="mb-2 space-y-2 px-4 text-sm">
         {[0, 1, 2].map((i) => (
           <div key={i} className="bg-surface-dim h-8 animate-pulse rounded-lg" />
         ))}
@@ -144,7 +146,7 @@ export function DeparturesBoard({
 
   if (fetchError !== null && (departures === null || departures.length === 0)) {
     return (
-      <div className="px-4 pb-3 text-sm">
+      <div className="mb-2 space-y-2 px-4 text-sm">
         <p role="status" className="text-on-surface-faint italic">
           {lastUpdated !== null
             ? `Updates unavailable — last updated ${formatClockTime(new Date(lastUpdated))}. `
@@ -158,7 +160,7 @@ export function DeparturesBoard({
   if (departures !== null && departures.length === 0) {
     const scheduleGone = scheduleEnd !== null && now > scheduleEnd.getTime();
     return (
-      <div className="px-4 pb-3 text-sm">
+      <div className="mb-2 space-y-2 px-4 text-sm">
         <span className="text-on-surface-faint italic">
           {scheduleGone ? "Schedule unavailable" : "No more departures today"}
         </span>
@@ -179,7 +181,7 @@ export function DeparturesBoard({
   );
 
   return (
-    <div className="grid grid-cols-[max-content_0.375rem_minmax(0,1fr)_max-content_max-content_max-content] gap-x-2 gap-y-0.5 px-2 pb-3 text-sm">
+    <div className="grid grid-cols-[max-content_0.375rem_minmax(0,1fr)_max-content_max-content_max-content] gap-x-2 gap-y-0.5 px-2 text-sm">
       {fetchError !== null ? (
         <p role="status" className="text-warn col-span-full px-2 py-1">
           Updates unavailable
@@ -188,13 +190,14 @@ export function DeparturesBoard({
             : ""}. {fetchError}
         </p>
       ) : null}
-      {live.length > 0 ? (
+      {preview ? departures?.map(row) : null}
+      {!preview && live.length > 0 ? (
         <>
           <SectionHeader label={fetchError === null ? "Live now" : "Last known live arrivals"} />
           {live.map(row)}
         </>
       ) : null}
-      {scheduled.length > 0 ? (
+      {!preview && scheduled.length > 0 ? (
         <>
           <SectionHeader label="Scheduled" />
           {scheduled.map(row)}
