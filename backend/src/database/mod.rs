@@ -13,6 +13,7 @@ use tracing::{debug, trace, warn};
 use crate::cli::DatabaseUrl;
 
 pub mod schedule_offsets;
+pub mod service_days;
 pub mod time;
 
 static DATABASE: OnceLock<PgPool> = OnceLock::new();
@@ -42,6 +43,7 @@ impl Database {
             .map_err(|_| anyhow::anyhow!("Failed to initialize database, pool already set"))?;
 
         schedule_offsets::init().await?;
+        service_days::init().await?;
 
         debug!("Database initialized");
 

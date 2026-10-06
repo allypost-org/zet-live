@@ -6,7 +6,7 @@ import type { StopV1 } from "./app/entity/v1/stop";
 import type { GbfsStationV1 } from "./app/entity/v1/gbfs-station";
 import type { GroupedStop } from "./app/entity/shared";
 import type { TripStopTimeEntry } from "./app/trip-stop-times";
-import { stopArrivalTimeSchema } from "./app/entity/v1/api";
+import { stopArrivalTimeSchema, type Departure } from "./app/entity/v1/api";
 import type { GlobalNotice } from "./app/entity/v1/message";
 
 export type { TripStopTimeEntry };
@@ -39,6 +39,9 @@ export type StopSelection = {
   routes: string[];
   tripIds: Set<string> | null;
   arrivalTimes: StopArrivalTime[] | null;
+  departures: Departure[] | null;
+  scheduleEnd: Date | null;
+  departuresLastUpdated: number | null;
   fetchError: string | null;
 };
 
@@ -48,6 +51,7 @@ export type StoreState = {
 
   simpleStops: Record<string, StopV1>;
   stopsGrouped: GroupedStop[];
+  stopsGroupedAll: GroupedStop[];
   activeStopIds: Set<string>;
   stopBounds: [[number, number], [number, number]];
 
@@ -123,6 +127,7 @@ export const useStore = create<StoreState>()(
 
     simpleStops: {},
     stopsGrouped: [],
+    stopsGroupedAll: [],
     activeStopIds: new Set(),
     stopBounds: DEFAULT_BOUNDS,
 
@@ -184,6 +189,9 @@ export const useStore = create<StoreState>()(
           routes: [],
           tripIds: null,
           arrivalTimes: null,
+          departures: null,
+          scheduleEnd: null,
+          departuresLastUpdated: null,
           fetchError: null,
         },
         vehicleSelection: null,

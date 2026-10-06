@@ -1,0 +1,1 @@
+DROP INDEX idx_gtfs_trips__service_id;

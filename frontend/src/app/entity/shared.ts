@@ -20,6 +20,8 @@ export type StopsUpdateResponse = {
   stops?: StopData[];
   bounds?: [[number, number], [number, number]];
   grouped: GroupedStop[];
+  groupedAll?: GroupedStop[];
+  activeStopIds?: string[];
 };
 
 export type ProcessedMessageResponse = {

@@ -56,8 +56,9 @@ macro_rules! feature_flags {
 }
 
 feature_flags! {
-    // Flags are added here when a feature needs gating, e.g.:
-    // stop_departures => "stop_departures",
+    // Gates the stop departure board and zoom-gated all-stops map in the
+    // frontend, plus the user-aware stop-departures endpoint.
+    stop_departures => "stop_departures",
 }
 
 /// A flag's rollout state.

@@ -2973,7 +2973,12 @@
           ]
         },
         "circle-color": "#000",
-        "circle-opacity": 0.67,
+        "circle-opacity": [
+          "case",
+          ["boolean", ["get", "active"], true],
+          0.67,
+          0.22
+        ],
         "circle-stroke-color": "#fff",
         "circle-stroke-width": {
           "stops": [

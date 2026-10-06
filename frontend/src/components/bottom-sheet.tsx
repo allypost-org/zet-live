@@ -35,7 +35,7 @@ export function BottomSheet({
   children,
   minimizedBody,
   expandedHeight = "40dvh",
-  maximizedHeight = "95dvh",
+  maximizedHeight = "calc(95dvh - 36px)",
 }: Props) {
   const [sheetState, setSheetState] = useState<SheetState>("expanded");
   const [rendered, setRendered] = useState(false);

@@ -32,6 +32,10 @@ import {
   appRequestAnimationFrame,
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
+import { useFeatureFlag } from "@/feature-flags-store";
+
+/** Zoom at and above which all stops are shown (not just active ones). */
+const ALL_STOPS_MIN_ZOOM = 15;
 
 const styleLoaders: Record<MapStyleId, () => Promise<StyleSpecification>> = {
   "3d": async () => (await import("@/data/maps/style/3d.json")).default as StyleSpecification,
@@ -220,6 +224,13 @@ export function MapContainer() {
   const stopSelection = useStore((s) => s.stopSelection);
   const deltaMoveLines = useStore((s) => s.deltaMoveLines);
   const displayedStops = useStore((s) => s.displayedStops);
+  const stopsGroupedAll = useStore((s) => s.stopsGroupedAll);
+  const activeStopIds = useStore((s) => s.activeStopIds);
+  const stopBoardFlag = useFeatureFlag("stop_departures");
+  const [zoom, setZoom] = useState(12);
+  const showAllStops =
+    stopBoardFlag && selection === null && zoom >= ALL_STOPS_MIN_ZOOM && stopsGroupedAll.length > 0;
+  const baseStops = showAllStops ? stopsGroupedAll : displayedStops;
   const maxBounds = useStore((s) => s.maxBounds);
   const geolocPermission = useGeolocationPermission();
   const searchMatchedVehicleIds = useStore((s) => s.searchMatchedVehicleMapIds);
@@ -307,6 +318,12 @@ export function MapContainer() {
     return () => {
       cancelled = true;
     };
+  }, [styleReady]);
+
+  useEffect(() => {
+    if (!styleReady) return;
+    const z = mapRef.current?.getZoom();
+    if (z !== undefined) setZoom(z);
   }, [styleReady]);
 
   const onDragStart = useCallback(() => {
@@ -444,8 +461,9 @@ export function MapContainer() {
 
   const routeStopsFeatures = useMemo(() => {
     const filtered = searchMatchedStopIds
-      ? displayedStops.filter((s) => s.ids.some((id) => searchMatchedStopIds.has(id)))
-      : displayedStops;
+      ? baseStops.filter((s) => s.ids.some((id) => searchMatchedStopIds.has(id)))
+      : baseStops;
+    const hasActive = activeStopIds.size > 0;
     return {
       type: "FeatureCollection" as const,
       features: filtered.map((stop) => ({
@@ -454,6 +472,7 @@ export function MapContainer() {
           name: stop.name,
           ids: JSON.stringify(stop.ids),
           isNext: nextStopId !== null && stop.ids.includes(nextStopId),
+          active: showAllStops && hasActive ? stop.ids.some((id) => activeStopIds.has(id)) : true,
         },
         geometry: {
           type: "Point" as const,
@@ -461,7 +480,7 @@ export function MapContainer() {
         },
       })),
     };
-  }, [displayedStops, nextStopId, searchMatchedStopIds]);
+  }, [baseStops, nextStopId, searchMatchedStopIds, activeStopIds, showAllStops]);
   useRafSetData(mapRef, "route-stops", routeStopsFeatures, styleReady);
 
   const followingRouteFeatures = useMemo(
@@ -545,6 +564,9 @@ export function MapContainer() {
           onClick={handleClick}
           onData={handleMapData}
           onDragStart={onDragStart}
+          onZoomEnd={(e) => {
+            setZoom(e.viewState.zoom);
+          }}
           className="h-full w-full"
         >
           {/* @ts-expect-error visualizeZoom exists in maplibre-gl but not in mapbox-gl types */}

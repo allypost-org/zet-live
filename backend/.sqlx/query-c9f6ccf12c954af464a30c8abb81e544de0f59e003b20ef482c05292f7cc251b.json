@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT NOT EXISTS (SELECT 1 FROM unnest($1::text[]) AS requested(stop_id)\n             WHERE NOT EXISTS (SELECT 1 FROM gtfs_stops s WHERE s.stop_id = requested.stop_id))",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "?column?",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c9f6ccf12c954af464a30c8abb81e544de0f59e003b20ef482c05292f7cc251b"
+}

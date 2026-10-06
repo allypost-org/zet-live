@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n              lv.vehicle_id\n            , lv.trip_id\n            , lv.route_id\n            , gst.stop_id\n            , gst.stop_sequence\n            , lv.next_stop_sequence\n            , lst.arrival_time  AS live_arrival_time\n            , lst.arrival_delay AS live_arrival_delay\n            , gst.arrival_time_seconds\n            , (\n                SELECT\n                    lst2.arrival_delay\n                FROM live_trip_stop_times lst2\n                WHERE   lst2.trip_id = lv.trip_id\n                    AND lst2.stop_sequence <= gst.stop_sequence\n                    AND lst2.arrival_delay IS NOT NULL\n                ORDER BY lst2.stop_sequence DESC LIMIT 1\n            ) AS effective_delay\n        FROM live_vehicles lv\n        JOIN gtfs_stop_times gst ON gst.trip_key = lv.trip_key\n        LEFT JOIN live_trip_stop_times lst\n            ON  lst.trip_id = lv.trip_id\n            AND lst.stop_sequence = gst.stop_sequence\n        WHERE gst.stop_id = ANY($1)\n        ORDER BY gst.stop_sequence\n        ",
+  "query": "\n        SELECT\n              lv.vehicle_id\n            , lv.trip_id\n            , lv.trip_key AS \"trip_key!\"\n            , lv.trip_headsign\n            , lv.route_id\n            , gst.stop_id\n            , gst.stop_sequence\n            , lv.next_stop_sequence\n            , lst.arrival_time  AS live_arrival_time\n            , lst.arrival_delay AS live_arrival_delay\n            , gst.arrival_time_seconds\n            , (\n                SELECT\n                    lst2.arrival_delay\n                FROM live_trip_stop_times lst2\n                WHERE   lst2.trip_id = lv.trip_id\n                    AND lst2.stop_sequence <= gst.stop_sequence\n                    AND lst2.arrival_delay IS NOT NULL\n                ORDER BY lst2.stop_sequence DESC LIMIT 1\n            ) AS effective_delay\n        FROM live_vehicles lv\n        JOIN gtfs_stop_times gst ON gst.trip_key = lv.trip_key\n        LEFT JOIN live_trip_stop_times lst\n            ON  lst.trip_id = lv.trip_id\n            AND lst.stop_sequence = gst.stop_sequence\n        WHERE gst.stop_id = ANY($1)\n        ORDER BY gst.stop_sequence\n        ",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,28 @@
       },
       {
         "ordinal": 2,
+        "name": "trip_key!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "trip_key"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "trip_headsign",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "trip_headsign"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "route_id",
         "type_info": "Text",
         "origin": {
@@ -37,7 +59,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 5,
         "name": "stop_id",
         "type_info": "Text",
         "origin": {
@@ -48,7 +70,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 6,
         "name": "stop_sequence",
         "type_info": "Int4",
         "origin": {
@@ -59,7 +81,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 7,
         "name": "next_stop_sequence",
         "type_info": "Int4",
         "origin": {
@@ -70,7 +92,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 8,
         "name": "live_arrival_time",
         "type_info": "Int4",
         "origin": {
@@ -81,7 +103,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 9,
         "name": "live_arrival_delay",
         "type_info": "Int4",
         "origin": {
@@ -92,7 +114,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 10,
         "name": "arrival_time_seconds",
         "type_info": "Int4",
         "origin": {
@@ -103,7 +125,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "effective_delay",
         "type_info": "Int4",
         "origin": "Expression"
@@ -117,6 +139,8 @@
     "nullable": [
       false,
       false,
+      true,
+      true,
       false,
       false,
       false,
@@ -127,5 +151,5 @@
       null
     ]
   },
-  "hash": "7d09250beeaa453a7847857801aba8338495b1b64d05e8618e42c00483f08fe5"
+  "hash": "4b281c3fe6b78e71f61955ad7e763c636940a8baaeda86f739032abe1a8e8f6a"
 }

@@ -91,6 +91,10 @@ pub fn create_v1_router() -> Router {
         .route("/schedule/stops/{id}", get(schedule::get_stop))
         .route("/schedule/simple-stops", get(schedule::get_simple_stops))
         .route("/schedule/stop-trips", get(schedule::get_stop_trips))
+        .route(
+            "/schedule/stop-departures",
+            get(schedule::get_stop_departures),
+        )
         .route("/schedule/trips", get(schedule::get_trips))
         .route("/schedule/trips/{id}", get(schedule::get_trip))
         .route("/schedule/shapes", get(schedule::get_shapes))
@@ -203,7 +207,7 @@ pub async fn broadcast_notices(notices: &[GlobalNotice]) {
 /// Tell every WS connection to re-evaluate and push its own feature-flag set.
 pub fn broadcast_feature_flags_changed() {
     if let Some(state) = V1_APP_STATE.get() {
-        state.send_transmission(Transmission::FeatureFlagsChanged);
+        state.flag_changes.send_replace(());
     }
 }
 
@@ -1027,12 +1031,18 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 pub struct V1AppState {
     tx: watch::Sender<Arc<Transmission>>,
     pub rx: watch::Receiver<Arc<Transmission>>,
+    flag_changes: watch::Sender<()>,
 }
 impl V1AppState {
     pub fn new() -> Self {
         let (tx, rx) = watch::channel(Arc::new(Transmission::Empty));
+        let (flag_changes, _) = watch::channel(());
 
-        Self { tx, rx }
+        Self {
+            tx,
+            rx,
+            flag_changes,
+        }
     }
 
     pub fn send_transmission(&self, transmission: Transmission) {
@@ -1088,9 +1098,6 @@ pub enum Transmission {
         user_id: String,
         bytes: Bytes,
     },
-    /// Feature flags changed; every connection task evaluates and sends its
-    /// own (user-specific) enabled-flag map.
-    FeatureFlagsChanged,
 }
 
 /// Push a per-account notice update to a single account's connections.

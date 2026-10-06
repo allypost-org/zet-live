@@ -5,6 +5,9 @@ import {
   tripStopTimesResponseSchema,
   stopArrivalsResponseSchema,
   stopTripsResponseSchema,
+  stopDeparturesResponseSchema,
+  type Departure,
+  type ApiError,
 } from "@/app/entity/v1/api";
 import { VehicleV1 } from "@/app/entity/v1/vehicle";
 import { StopV1 } from "@/app/entity/v1/stop";
@@ -19,6 +22,7 @@ import {
 } from "@/store";
 import type { StopsUpdateResponse } from "@/app/entity/shared";
 import { buildRouteDisplayedStops, patchTripStopTimesFromVehicle } from "@/app/trip-stop-times";
+import { stopDeparturesEnabled } from "@/feature-flags-store";
 import { toast } from "sonner";
 
 function vehicleMapKey(id: string) {
@@ -56,6 +60,8 @@ export function handleStopsUpdate(response: StopsUpdateResponse) {
   const useGrouped = state.selection === null;
   useStore.setState({
     stopsGrouped: response.grouped,
+    ...(response.groupedAll ? { stopsGroupedAll: response.groupedAll } : {}),
+    ...(response.activeStopIds ? { activeStopIds: new Set(response.activeStopIds) } : {}),
     displayedStops: useGrouped ? response.grouped : state.displayedStops,
   });
 }
@@ -127,10 +133,16 @@ export function processMessage(message: V1Message) {
     updateMaxBounds();
 
     const now = Date.now();
-    if (now - lastStopTimesRefresh >= STOP_TIMES_REFRESH_INTERVAL) {
+    const sel = useStore.getState().selection;
+
+    if (sel?.type === "stop" && stopDeparturesEnabled()) {
+      if (now - lastStopDeparturesRefresh >= STOP_DEPARTURES_REFRESH_INTERVAL) {
+        lastStopDeparturesRefresh = now;
+        void refreshStopDepartures(sel.ids);
+      }
+    } else if (now - lastStopTimesRefresh >= STOP_TIMES_REFRESH_INTERVAL) {
       lastStopTimesRefresh = now;
 
-      const sel = useStore.getState().selection;
       if (sel?.type === "vehicle" && sel.tripId) {
         void refreshTripStopTimes(sel.tripId);
       } else if (sel?.type === "stop") {
@@ -262,6 +274,8 @@ let stopTripsRefreshAbort: AbortController | null = null;
 
 let lastStopTimesRefresh = 0;
 const STOP_TIMES_REFRESH_INTERVAL = 15_000;
+let lastStopDeparturesRefresh = 0;
+const STOP_DEPARTURES_REFRESH_INTERVAL = 15_000;
 
 async function refreshTripStopTimes(tripId: string) {
   followingRouteRefreshAbort?.abort();
@@ -298,7 +312,7 @@ async function refreshStopArrivalTimes(stopIds: string[]) {
 
   const isStale = () => {
     const sel = useStore.getState().selection;
-    return sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
+    return stopDeparturesEnabled() || sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
   };
 
   const queryParams = new URLSearchParams();
@@ -326,7 +340,115 @@ async function refreshStopArrivalTimes(stopIds: string[]) {
   patchStopSelection({ arrivalTimes: result.data.d.arrivalTimes, fetchError: null });
 }
 
+let stopDeparturesAbort: AbortController | null = null;
+let stopDeparturesRefreshAbort: AbortController | null = null;
+
+function recordDeparturesError(error: ApiError) {
+  const permanent = [400, 401, 403, 404, 422].includes(error.status);
+  patchStopSelection({
+    fetchError: error.error,
+    ...(permanent
+      ? { departures: null, tripIds: null, scheduleEnd: null, departuresLastUpdated: null }
+      : {}),
+  });
+}
+
+export async function fetchStopDepartures(stopIds: string[], silent = false) {
+  stopDeparturesAbort?.abort();
+  stopDeparturesRefreshAbort?.abort();
+  stopTripsAbort?.abort();
+  stopTripsRefreshAbort?.abort();
+  stopDeparturesAbort = new AbortController();
+  const { signal } = stopDeparturesAbort;
+
+  const isStale = () => {
+    const sel = useStore.getState().selection;
+    return !stopDeparturesEnabled() || sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
+  };
+
+  const queryParams = new URLSearchParams();
+  for (const stopId of stopIds) {
+    queryParams.append("stop", stopId);
+  }
+
+  const result = await apiFetch(
+    `${API_URL}/v1/schedule/stop-departures?${queryParams.toString()}`,
+    stopDeparturesResponseSchema,
+    { signal },
+  );
+
+  if (signal.aborted || isStale()) return;
+
+  if (result.error) {
+    recordDeparturesError(result.error);
+    if (!silent && result.error.status !== 404) {
+      toast.error("Failed to load departures", { description: result.error.error });
+    }
+    return;
+  }
+
+  const liveTripIds = new Set(
+    result.data.d.departures
+      .filter((d): d is Extract<Departure, { kind: "live" }> => d.kind === "live")
+      .map((d) => d.tripId),
+  );
+
+  patchStopSelection({
+    departures: result.data.d.departures,
+    scheduleEnd:
+      result.data.d.scheduleEnd === null ? null : new Date(result.data.d.scheduleEnd * 1000),
+    tripIds: liveTripIds,
+    fetchError: null,
+    departuresLastUpdated: Date.now(),
+  });
+}
+
+async function refreshStopDepartures(stopIds: string[]) {
+  stopDeparturesRefreshAbort?.abort();
+  stopDeparturesRefreshAbort = new AbortController();
+  const { signal } = stopDeparturesRefreshAbort;
+
+  const isStale = () => {
+    const sel = useStore.getState().selection;
+    return !stopDeparturesEnabled() || sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
+  };
+
+  const queryParams = new URLSearchParams();
+  for (const stopId of stopIds) {
+    queryParams.append("stop", stopId);
+  }
+
+  const result = await apiFetch(
+    `${API_URL}/v1/schedule/stop-departures?${queryParams.toString()}`,
+    stopDeparturesResponseSchema,
+    { signal },
+  );
+
+  if (signal.aborted || isStale()) return;
+  if (result.error) {
+    recordDeparturesError(result.error);
+    return;
+  }
+
+  const liveTripIds = new Set(
+    result.data.d.departures
+      .filter((d): d is Extract<Departure, { kind: "live" }> => d.kind === "live")
+      .map((d) => d.tripId),
+  );
+
+  patchStopSelection({
+    departures: result.data.d.departures,
+    scheduleEnd:
+      result.data.d.scheduleEnd === null ? null : new Date(result.data.d.scheduleEnd * 1000),
+    tripIds: liveTripIds,
+    fetchError: null,
+    departuresLastUpdated: Date.now(),
+  });
+}
+
 export async function fetchStopTrips(stopIds: string[]) {
+  stopDeparturesAbort?.abort();
+  stopDeparturesRefreshAbort?.abort();
   stopTripsAbort?.abort();
   stopTripsRefreshAbort?.abort();
   stopTripsAbort = new AbortController();
@@ -334,7 +456,7 @@ export async function fetchStopTrips(stopIds: string[]) {
 
   const isStale = () => {
     const sel = useStore.getState().selection;
-    return sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
+    return stopDeparturesEnabled() || sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
   };
 
   const queryParams = new URLSearchParams();

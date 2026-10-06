@@ -1,0 +1,69 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                  COALESCE(r.route_short_name, r.route_id) AS \"route!\"\n                , COALESCE(st.stop_headsign, t.trip_headsign) AS headsign\n                , st.departure_time_seconds\n                , t.trip_id\n                , t.trip_key AS \"trip_key!\"\n            FROM gtfs_stop_times st\n            JOIN gtfs_trips t ON t.trip_id = st.trip_id\n            JOIN gtfs_routes r ON r.route_id = t.route_id\n            WHERE st.stop_id = ANY($1)\n              AND t.service_id = ANY($2)\n              AND st.departure_time_seconds BETWEEN $3 AND $4\n            ORDER BY st.departure_time_seconds\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "route!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "headsign",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "departure_time_seconds",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "departure_time_seconds"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "trip_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "trip_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "trip_key!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "trip_key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "e0ee2594b9214e3893fd7a33af6abdd3c284ebbb88665303669e43248224d1ec"
+}

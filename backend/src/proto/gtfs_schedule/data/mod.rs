@@ -22,6 +22,19 @@ impl GtfsSchedule {
     pub async fn read_from_zip_bytes(zip_bytes: prost::bytes::Bytes) -> Result<(), FileDataError> {
         debug!("Reading GTFS schedule from zip bytes");
 
+        let calendar_bytes = zip_bytes.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), FileDataError> {
+            let zip = zip::ZipArchive::new(std::io::Cursor::new(calendar_bytes))?;
+            if !zip
+                .file_names()
+                .any(|name| matches!(name, "calendar.txt" | "calendar_dates.txt"))
+            {
+                return Err(FileDataError::MissingCalendar);
+            }
+            Ok(())
+        })
+        .await??;
+
         let mut tx = Database::pool().begin().await?;
         let start = Instant::now();
 
@@ -30,6 +43,7 @@ impl GtfsSchedule {
             &zip_bytes,
             FileSpec {
                 file: "routes.txt",
+                optional: false,
                 table: "gtfs_routes",
                 rebuild_indexes_around_copy: false,
                 columns: &[
@@ -52,6 +66,7 @@ impl GtfsSchedule {
             &zip_bytes,
             FileSpec {
                 file: "shapes.txt",
+                optional: false,
                 table: "gtfs_shapes",
                 rebuild_indexes_around_copy: false,
                 columns: &[
@@ -70,6 +85,7 @@ impl GtfsSchedule {
             &zip_bytes,
             FileSpec {
                 file: "stops.txt",
+                optional: false,
                 table: "gtfs_stops",
                 rebuild_indexes_around_copy: false,
                 columns: &[
@@ -93,6 +109,7 @@ impl GtfsSchedule {
             &zip_bytes,
             FileSpec {
                 file: "trips.txt",
+                optional: false,
                 table: "gtfs_trips",
                 rebuild_indexes_around_copy: false,
                 columns: &[
@@ -113,7 +130,49 @@ impl GtfsSchedule {
             &mut tx,
             &zip_bytes,
             FileSpec {
+                file: "calendar.txt",
+                optional: true,
+                table: "gtfs_calendar",
+                rebuild_indexes_around_copy: false,
+                columns: &[
+                    ("service_id", "service_id"),
+                    ("monday", "monday"),
+                    ("tuesday", "tuesday"),
+                    ("wednesday", "wednesday"),
+                    ("thursday", "thursday"),
+                    ("friday", "friday"),
+                    ("saturday", "saturday"),
+                    ("sunday", "sunday"),
+                    ("start_date", "start_date"),
+                    ("end_date", "end_date"),
+                ],
+            },
+        )
+        .await?;
+
+        copy_csv(
+            &mut tx,
+            &zip_bytes,
+            FileSpec {
+                file: "calendar_dates.txt",
+                optional: true,
+                table: "gtfs_calendar_dates",
+                rebuild_indexes_around_copy: false,
+                columns: &[
+                    ("service_id", "service_id"),
+                    ("date", "date"),
+                    ("exception_type", "exception_type"),
+                ],
+            },
+        )
+        .await?;
+
+        copy_csv(
+            &mut tx,
+            &zip_bytes,
+            FileSpec {
                 file: "stop_times.txt",
+                optional: false,
                 table: "gtfs_stop_times",
                 rebuild_indexes_around_copy: true,
                 columns: &[
@@ -148,6 +207,7 @@ impl GtfsSchedule {
 
 struct FileSpec {
     file: &'static str,
+    optional: bool,
     table: &'static str,
     /// Drop non-PK/non-unique indexes before COPY and recreate them after.
     /// Bulk `CREATE INDEX` is far cheaper than per-row maintenance during COPY
@@ -174,10 +234,15 @@ async fn copy_csv(
 
     let zip_bytes = zip_bytes.clone();
     let file = spec.file.to_string();
-    let (csv_header, data) = tokio::task::spawn_blocking(move || -> Result<_, FileDataError> {
+    let optional = spec.optional;
+    let contents = tokio::task::spawn_blocking(move || -> Result<_, FileDataError> {
         let mut zip =
             zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).map_err(FileDataError::Zip)?;
-        let mut entry = zip.by_name(&file).map_err(FileDataError::Zip)?;
+        let mut entry = match zip.by_name(&file) {
+            Ok(entry) => entry,
+            Err(zip::result::ZipError::FileNotFound) if optional => return Ok(None),
+            Err(e) => return Err(FileDataError::Zip(e)),
+        };
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
         drop(entry);
@@ -190,9 +255,16 @@ async fn copy_csv(
             .map_err(|e| FileDataError::ColumnMapping(format!("non-utf8 header: {e}")))?
             .to_string();
         let data = buf[nl + 1..].to_vec();
-        Ok((header, data))
+        Ok(Some((header, data)))
     })
     .await??;
+
+    sqlx::query(AssertSqlSafe(format!("DELETE FROM {}", spec.table)))
+        .execute(&mut **tx)
+        .await?;
+    let Some((csv_header, data)) = contents else {
+        return Ok(());
+    };
 
     let cols_csv = csv_header
         .split(',')
@@ -219,10 +291,6 @@ async fn copy_csv(
         })?;
 
     let cols_csv = cols_csv.trim_end_matches(", ");
-
-    sqlx::query(AssertSqlSafe(format!("DELETE FROM {}", spec.table)))
-        .execute(&mut **tx)
-        .await?;
 
     let copy_sql = format!(
         "COPY {} ({}) FROM STDIN WITH (FORMAT csv)",
@@ -283,6 +351,8 @@ async fn capture_and_drop_indexes(
 
 #[derive(Debug, thiserror::Error)]
 pub enum FileDataError {
+    #[error("GTFS feed requires calendar.txt or calendar_dates.txt")]
+    MissingCalendar,
     #[error("Failed to read from zip: {0:?}")]
     Zip(#[from] zip::result::ZipError),
     #[error("Failed to read: {0}")]

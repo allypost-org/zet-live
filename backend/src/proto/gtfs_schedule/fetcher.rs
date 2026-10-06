@@ -225,6 +225,7 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
             .map_err(FetcherError::Database)?;
 
             schedule_offsets::reload().await;
+            crate::database::service_days::reload().await;
 
             debug!("Schedule updated");
 

@@ -61,6 +61,62 @@ export const stopTripsResponseSchema = z.object({
   }),
 });
 
+const departureTupleSchema = z.tuple([
+  z.string(),
+  z.string(),
+  z.number(),
+  z.string(),
+  z.string(),
+  z.number().nullable(),
+]);
+
+export type Departure =
+  | {
+      kind: "live";
+      routeId: string;
+      headsign: string;
+      scheduledTime: Date;
+      tripId: string;
+      vehicleId: string;
+      predictedTime: Date;
+    }
+  | {
+      kind: "scheduled";
+      routeId: string;
+      headsign: string;
+      scheduledTime: Date;
+      tripId: string;
+    };
+
+export const departureSchema = departureTupleSchema.transform((row): Departure => {
+  const [routeId, headsign, scheduledTime, tripId, vehicleId, predictedTime] = row;
+  if (vehicleId !== "" && predictedTime !== null) {
+    return {
+      kind: "live",
+      routeId,
+      headsign,
+      scheduledTime: new Date(scheduledTime * 1000),
+      tripId,
+      vehicleId,
+      predictedTime: new Date(predictedTime * 1000),
+    };
+  }
+  return {
+    kind: "scheduled",
+    routeId,
+    headsign,
+    scheduledTime: new Date(scheduledTime * 1000),
+    tripId,
+  };
+});
+
+export const stopDeparturesResponseSchema = z.object({
+  d: z.object({
+    departures: z.array(departureSchema),
+    scheduleEnd: z.number().nullable(),
+  }),
+});
+
 export type ApiResponse<T> = { data: T; error: null } | { data: null; error: ApiError };
 
 export function parseResponse<T>(

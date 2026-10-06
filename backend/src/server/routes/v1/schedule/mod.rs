@@ -1,5 +1,3 @@
-use std::collections::{HashMap, HashSet};
-
 use axum::{extract::Path, http::HeaderMap, response::IntoResponse};
 use axum_extra::extract::Query;
 use serde::{Deserialize, Serialize};
@@ -13,13 +11,12 @@ use crate::{
     server::{error::ApiError, request::JsonOrAccept},
 };
 
+mod departures;
 mod predictions;
 
+pub use departures::get_stop_departures;
 pub use predictions::compute_base_midnight;
-use predictions::{
-    LiveStopTime, LiveVehicleAnchor, ScheduledStop, predict_trip_stop_times,
-    try_infer_base_midnight,
-};
+use predictions::{LiveStopTime, LiveVehicleAnchor, ScheduledStop, predict_trip_stop_times};
 
 async fn get_base_midnight() -> i64 {
     Database::logged(
@@ -203,7 +200,6 @@ pub struct GetStopTripsQuery {
     #[serde(default)]
     pub stop: Vec<String>,
 }
-#[allow(clippy::too_many_lines)]
 pub async fn get_stop_trips(
     headers: HeaderMap,
     Query(query): Query<GetStopTripsQuery>,
@@ -222,138 +218,28 @@ pub async fn get_stop_trips(
         .into_response();
     }
 
-    let global_base_midnight = get_base_midnight().await;
-
-    let rows = {
-        #[derive(Debug)]
-        struct StopTripRow {
-            vehicle_id: String,
-            trip_id: String,
-            route_id: String,
-            stop_id: String,
-            stop_sequence: i32,
-            next_stop_sequence: Option<i32>,
-            live_arrival_time: Option<i32>,
-            live_arrival_delay: Option<i32>,
-            arrival_time_seconds: Option<i32>,
-            effective_delay: Option<i32>,
-        }
-
-        sqlx::query_as!(
-            StopTripRow,
-            "
-        SELECT
-              lv.vehicle_id
-            , lv.trip_id
-            , lv.route_id
-            , gst.stop_id
-            , gst.stop_sequence
-            , lv.next_stop_sequence
-            , lst.arrival_time  AS live_arrival_time
-            , lst.arrival_delay AS live_arrival_delay
-            , gst.arrival_time_seconds
-            , (
-                SELECT
-                    lst2.arrival_delay
-                FROM live_trip_stop_times lst2
-                WHERE   lst2.trip_id = lv.trip_id
-                    AND lst2.stop_sequence <= gst.stop_sequence
-                    AND lst2.arrival_delay IS NOT NULL
-                ORDER BY lst2.stop_sequence DESC LIMIT 1
-            ) AS effective_delay
-        FROM live_vehicles lv
-        JOIN gtfs_stop_times gst ON gst.trip_key = lv.trip_key
-        LEFT JOIN live_trip_stop_times lst
-            ON  lst.trip_id = lv.trip_id
-            AND lst.stop_sequence = gst.stop_sequence
-        WHERE gst.stop_id = ANY($1)
-        ORDER BY gst.stop_sequence
-        ",
-            &query.stop,
-        )
-    };
-    let rows = match Database::logged("get_stop_trips", rows.fetch_all(&Database::pool())).await {
-        Ok(rows) => rows,
+    let now = jiff::Timestamp::now().as_second();
+    let live = match departures::fetch_live_arrivals(&query.stop, now).await {
+        Ok(live) => live,
         Err(e) => {
             error!(%e, "Failed to get stop trips");
             return ApiError::internal("Failed to get stop trips").into_response();
         }
     };
 
-    let mut seen_vehicles = HashSet::new();
-    let mut seen_trips = HashSet::new();
-    let mut arrival_times = Vec::new();
+    let arrival_times = live
+        .arrivals
+        .into_iter()
+        .map(|a| StopArrivalTime {
+            trip_id: a.trip_id,
+            vehicle_id: a.vehicle_id,
+            route_id: a.route_id,
+            stop_id: a.stop_id,
+            arrival_time: a.predicted,
+        })
+        .collect::<Vec<_>>();
 
-    let now = jiff::Timestamp::now().as_second();
-
-    let mut trip_base_midnight = HashMap::new();
-
-    for row in &rows {
-        if let (Some(live_time), Some(offset)) = (row.live_arrival_time, row.arrival_time_seconds) {
-            let delay = row.live_arrival_delay.unwrap_or(0);
-            if let Some(computed) = try_infer_base_midnight(
-                i64::from(live_time),
-                i64::from(delay),
-                i64::from(offset),
-                now,
-            ) {
-                trip_base_midnight
-                    .entry(row.trip_id.clone())
-                    .or_insert(computed);
-            }
-        }
-    }
-
-    for row in &rows {
-        seen_trips.insert(row.trip_id.clone());
-
-        if !seen_vehicles.insert(row.vehicle_id.clone()) {
-            continue;
-        }
-
-        if let Some(next_seq) = row.next_stop_sequence
-            && row.stop_sequence < next_seq
-        {
-            continue;
-        }
-
-        let base_midnight = trip_base_midnight
-            .get(&row.trip_id)
-            .copied()
-            .unwrap_or(global_base_midnight);
-
-        let predicted = if row.live_arrival_time.is_some() {
-            row.live_arrival_time.map(i64::from)
-        } else if let Some(offset) = row.arrival_time_seconds {
-            let offset = i64::from(offset);
-            row.live_arrival_delay.map_or_else(
-                || {
-                    row.effective_delay
-                        .map(|delay| base_midnight + offset + i64::from(delay))
-                },
-                |delay| Some(base_midnight + offset + i64::from(delay)),
-            )
-        } else {
-            None
-        };
-
-        arrival_times.push(StopArrivalTime {
-            trip_id: row.trip_id.clone(),
-            vehicle_id: row.vehicle_id.clone(),
-            route_id: row.route_id.clone(),
-            stop_id: row.stop_id.clone(),
-            arrival_time: predicted,
-        });
-    }
-
-    let stop_trips = seen_trips.into_iter().collect::<Vec<_>>();
-
-    arrival_times.sort_by(|a, b| match (a.arrival_time, b.arrival_time) {
-        (Some(a), Some(b)) => a.cmp(&b),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => std::cmp::Ordering::Equal,
-    });
+    let stop_trips = live.trip_ids.into_iter().collect::<Vec<_>>();
 
     JsonOrAccept(
         Versioned::new(

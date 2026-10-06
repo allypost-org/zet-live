@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT service_id, date, exception_type FROM gtfs_calendar_dates",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "service_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar_dates",
+            "name": "service_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "date",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar_dates",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "exception_type",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar_dates",
+            "name": "exception_type"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "19f3a4ccef1a4c817382df2fbdedcc413beaaade0f264c4c83bd45da13eadbb2"
+}

@@ -5,3 +5,7 @@ export function formatMinutesFromNow(dateTime: Date): string {
   if (minutes === 1) return "1 min";
   return `${minutes} min`;
 }
+
+export function formatClockTime(date: Date): string {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}

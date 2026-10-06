@@ -17,3 +17,10 @@ export function setFeatureFlags(flags: Record<string, boolean>): void {
 export function useFeatureFlag(key: string): boolean {
   return featureFlagsStore((s) => s.flags[key] ?? false);
 }
+
+const STOP_DEPARTURES_FLAG = "stop_departures";
+
+/** Non-hook check for fetch paths (workers, store subscriptions). */
+export function stopDeparturesEnabled(): boolean {
+  return featureFlagsStore.getState().flags[STOP_DEPARTURES_FLAG] === true;
+}

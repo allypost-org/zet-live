@@ -6,6 +6,8 @@ import { GbfsStationSheet } from "@/components/gbfs-station-sheet";
 import { StatusBar } from "@/components/status-bar";
 import { SearchBar } from "@/components/search-bar";
 import { LoadingScreen } from "@/components/loading-screen";
+import { DeparturesBoard, DepartureSummary } from "@/components/departures-board";
+import { LineBadge } from "@/components/line-badge";
 import { Toaster } from "sonner";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useUrlSync } from "@/hooks/use-url-sync";
@@ -23,6 +25,7 @@ import { AuthButton } from "./components/auth-button";
 import { AuthModal } from "./components/auth-modal";
 import { NoticeBar } from "./components/notice-bar";
 import { useWakeLock } from "@/hooks/use-wake-lock";
+import { useFeatureFlag } from "@/feature-flags-store";
 import { useSetting } from "./settings";
 import {
   PLAUSIBLE_API_URL,
@@ -52,6 +55,8 @@ export function App() {
   const wakeLockEnabled = useSetting("wakeLockEnabled");
   useWakeLock(wakeLockEnabled);
 
+  const stopBoardFlag = useFeatureFlag("stop_departures");
+
   const selection = useStore((s) => s.selection);
   const vehicleSelection = useStore((s) => s.vehicleSelection);
   const stopSelection = useStore((s) => s.stopSelection);
@@ -77,6 +82,9 @@ export function App() {
 
   const tripStopTimes = vehicleSelection?.tripStopTimes ?? null;
   const stopArrivalTimes = stopSelection?.arrivalTimes ?? null;
+  const stopDepartures = stopSelection?.departures ?? null;
+  const stopScheduleEnd = stopSelection?.scheduleEnd ?? null;
+  const stopFetchError = stopSelection?.fetchError ?? null;
   const tripFetchError = vehicleSelection?.fetchError ?? null;
   const followEnabled = vehicleSelection?.followEnabled ?? false;
 
@@ -111,14 +119,9 @@ export function App() {
 
   if (selectedVehicle) {
     const routeTitle = selectedVehicle.getDisplayName();
-    const isBus = selectedVehicle.routeId.length > 2;
     sheetTitle = (
       <div className="flex items-center gap-2">
-        <span
-          className={`text-on-primary inline-flex items-center rounded px-1.5 py-0.5 text-xs font-bold ${isBus ? "bg-primary" : "bg-danger"}`}
-        >
-          {selectedVehicle.routeId}
-        </span>
+        <LineBadge routeId={selectedVehicle.routeId} />
         <span className="text-on-surface text-sm font-bold">{routeTitle}</span>
       </div>
     );
@@ -164,16 +167,22 @@ export function App() {
       <span className="text-on-surface truncate text-sm font-bold">{selectedStop.name}</span>
     );
 
-    const firstArrival = stopArrivalTimes?.find((a) => a.arrivalTime !== null);
-    if (firstArrival) {
-      const secondsUntil = (firstArrival.arrivalTime!.getTime() - Date.now()) / 1000;
-      const minutes = Math.round(secondsUntil / 60);
-      const label = minutes <= 0 ? "now" : minutes === 1 ? "1 min" : `${minutes} min`;
-      minimizedBody = (
-        <span className="text-on-surface-muted text-xs">
-          Route {firstArrival.routeId} in {label}
-        </span>
-      );
+    if (stopBoardFlag && stopDepartures !== null && stopDepartures.length > 0) {
+      const nextLive = stopDepartures.find((d) => d.kind === "live");
+      const next = nextLive ?? stopDepartures[0]!;
+      minimizedBody = <DepartureSummary departure={next} stale={stopFetchError !== null} />;
+    } else if (!stopBoardFlag && stopArrivalTimes !== null) {
+      const firstArrival = stopArrivalTimes.find((a) => a.arrivalTime !== null);
+      if (firstArrival) {
+        const secondsUntil = (firstArrival.arrivalTime!.getTime() - Date.now()) / 1000;
+        const minutes = Math.round(secondsUntil / 60);
+        const label = minutes <= 0 ? "now" : minutes === 1 ? "1 min" : `${minutes} min`;
+        minimizedBody = (
+          <span className="text-on-surface-muted text-xs">
+            Route {firstArrival.routeId} in {label}
+          </span>
+        );
+      }
     }
   } else if (selectedGbfsStation) {
     sheetTitle = (
@@ -252,19 +261,31 @@ export function App() {
               onStopClick={selectStop}
             />
           ) : selectedStop ? (
-            <StopSheet
-              stop={selectedStop}
-              arrivals={stopArrivalTimes}
-              onArrivalClick={(vehicleId, tripId) => {
-                selectVehicle(vehicleId, tripId, true);
-              }}
-            />
+            stopBoardFlag ? (
+              <DeparturesBoard
+                departures={stopDepartures}
+                scheduleEnd={stopScheduleEnd}
+                fetchError={stopFetchError}
+                lastUpdated={stopSelection?.departuresLastUpdated ?? null}
+                onVehicleClick={(vehicleId, tripId) => {
+                  selectVehicle(vehicleId, tripId, true);
+                }}
+              />
+            ) : (
+              <StopSheet
+                stop={selectedStop}
+                arrivals={stopArrivalTimes}
+                onArrivalClick={(vehicleId, tripId) => {
+                  selectVehicle(vehicleId, tripId, true);
+                }}
+              />
+            )
           ) : selectedGbfsStation ? (
             <GbfsStationSheet station={selectedGbfsStation} />
           ) : null}
         </BottomSheet>
 
-        <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2">
+        <div className="pointer-events-none absolute top-2 right-12 left-2 z-998 grid grid-cols-[minmax(0,auto)_1fr] gap-2">
           <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
             <SettingsButton />
             <FeedbackButton />

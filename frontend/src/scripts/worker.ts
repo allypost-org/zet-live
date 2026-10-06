@@ -16,6 +16,7 @@ const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
 let cachedStops: StopData[] = [];
 let cachedActiveStopIds = new Set<string>();
+let cachedGroupedAll: GroupedStop[] = [];
 let fetchIntervalId: ReturnType<typeof setInterval> | null = null;
 
 function mergedBboxArea(group: StopGroup, stop: StopData) {
@@ -34,7 +35,7 @@ function extendGroup(group: StopGroup, stop: StopData) {
   group.maxLng = Math.max(group.maxLng, stop.lng);
 }
 
-function computeGroupedStops(stops: StopData[], activeStopIds: Set<string>): GroupedStop[] {
+function computeGroupedStops(stops: StopData[], activeStopIds: Set<string> | null): GroupedStop[] {
   const stopsByName: Record<string, StopData[]> = {};
   for (const stop of stops) {
     if (!stopsByName[stop.name]) {
@@ -49,7 +50,7 @@ function computeGroupedStops(stops: StopData[], activeStopIds: Set<string>): Gro
     const grouped: StopGroup[] = [];
 
     for (const stop of nameStops) {
-      if (activeStopIds.size > 0 && !activeStopIds.has(stop.id)) {
+      if (activeStopIds !== null && activeStopIds.size > 0 && !activeStopIds.has(stop.id)) {
         continue;
       }
 
@@ -122,14 +123,26 @@ function extractActiveStopIdsFromMessage(data: V1Message["d"]): string[] | null 
 function handleProcessedStops(stops: StopData[]): StopsUpdateResponse {
   cachedStops = stops;
   const bounds = computeBounds(stops);
-  const grouped = computeGroupedStops(stops, cachedActiveStopIds);
-  return { type: "stops-update", stops, bounds, grouped };
+  const active = cachedActiveStopIds.size > 0 ? cachedActiveStopIds : null;
+  cachedGroupedAll = computeGroupedStops(stops, null);
+  return {
+    type: "stops-update",
+    stops,
+    bounds,
+    grouped: computeGroupedStops(stops, active),
+    groupedAll: cachedGroupedAll,
+    activeStopIds: [...cachedActiveStopIds],
+  };
 }
 
 function handleActiveStopIds(activeStopIds: string[]): StopsUpdateResponse {
   cachedActiveStopIds = new Set(activeStopIds);
-  const grouped = computeGroupedStops(cachedStops, cachedActiveStopIds);
-  return { type: "stops-update", grouped };
+  const active = cachedActiveStopIds.size > 0 ? cachedActiveStopIds : null;
+  return {
+    type: "stops-update",
+    grouped: computeGroupedStops(cachedStops, active),
+    activeStopIds,
+  };
 }
 
 addEventListener("message", (e: MessageEvent) => {

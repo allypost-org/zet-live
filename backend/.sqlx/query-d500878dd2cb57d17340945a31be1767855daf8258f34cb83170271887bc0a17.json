@@ -1,0 +1,134 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date FROM gtfs_calendar",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "service_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "service_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "monday",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "monday"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "tuesday",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "tuesday"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "wednesday",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "wednesday"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "thursday",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "thursday"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "friday",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "friday"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "saturday",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "saturday"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "sunday",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "sunday"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "start_date",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "start_date"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "end_date",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_calendar",
+            "name": "end_date"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d500878dd2cb57d17340945a31be1767855daf8258f34cb83170271887bc0a17"
+}

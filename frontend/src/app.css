@@ -19,6 +19,7 @@
   --success: #22c55e;
   --success-container: #d1fae5;
   --on-success-container: #065f46;
+  --warn: #d97706;
   --danger: #dc2626;
   --danger-container: #fee2e2;
   --on-danger-container: #991b1b;
@@ -42,6 +43,7 @@
   --success: #4ade80;
   --success-container: rgb(52 211 153 / 0.15);
   --on-success-container: #6ee7b7;
+  --warn: #fbbf24;
   --danger: #ef4444;
   --danger-container: rgb(248 113 113 / 0.15);
   --on-danger-container: #fca5a5;
@@ -65,6 +67,7 @@
   --color-success: var(--success);
   --color-success-container: var(--success-container);
   --color-on-success-container: var(--on-success-container);
+  --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-danger-container: var(--danger-container);
   --color-on-danger-container: var(--on-danger-container);

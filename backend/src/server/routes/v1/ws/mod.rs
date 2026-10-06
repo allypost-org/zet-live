@@ -123,9 +123,14 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
 
     let mut user_id = None;
     let mut session_id = None;
+    let mut flag_rx = state.flag_changes.subscribe();
 
     if let Err(e) = send_initial_state(&mut sender).await {
         error!(?e, "Error sending initial state");
+        cleanup_connection(addr).await;
+        return;
+    }
+    if !send_feature_flags(user_id.as_deref(), &mut sender).await {
         cleanup_connection(addr).await;
         return;
     }
@@ -140,6 +145,15 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
 
     loop {
         tokio::select! {
+            result = flag_rx.changed() => {
+                if result.is_err() {
+                    break;
+                }
+                flag_rx.borrow_and_update();
+                if !send_feature_flags(user_id.as_deref(), &mut sender).await {
+                    break;
+                }
+            }
             _ = ping_interval.tick() => {
                 debug!(?addr, "Pinging client");
                 if sender
@@ -202,6 +216,9 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
                                     session_id = None;
                                 }
                             }
+                            if !send_feature_flags(user_id.as_deref(), &mut sender).await {
+                                break;
+                            }
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => {
@@ -248,20 +265,26 @@ async fn handle_transmission(
                 .await
                 .is_ok()
         }
-        Transmission::FeatureFlagsChanged => {
-            let flags = crate::feature_flags::enabled_map(user_id);
-            let versioned = Versioned::new(1, Broadcast::FeatureFlags(flags));
-            let Ok(bytes) = minicbor_serde::to_vec(&versioned) else {
-                warn!(?addr, "Failed to serialize feature-flags broadcast");
-                return true;
-            };
-            sender
-                .send(Message::Binary(Bytes::from(bytes)))
-                .await
-                .is_ok()
-        }
         Transmission::Empty => true,
     }
+}
+
+async fn send_feature_flags(
+    user_id: Option<&str>,
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+) -> bool {
+    let versioned = Versioned::new(
+        1,
+        Broadcast::FeatureFlags(crate::feature_flags::enabled_map(user_id)),
+    );
+    let Ok(bytes) = minicbor_serde::to_vec(&versioned) else {
+        warn!("Failed to serialize feature-flags broadcast");
+        return false;
+    };
+    sender
+        .send(Message::Binary(Bytes::from(bytes)))
+        .await
+        .is_ok()
 }
 
 async fn cleanup_connection(addr: IpAddr) {

@@ -1,3 +1,4 @@
+import { LineBadge } from "@/components/line-badge";
 import type { StopArrivalTime } from "@/store";
 import { formatMinutesFromNow } from "@/utils/time";
 
@@ -39,14 +40,9 @@ export function StopSheet({ arrivals, onArrivalClick }: Props) {
           <span className="text-on-surface-faint text-xs italic">No active vehicles</span>
         ) : (
           sortedGroups.map(([routeId, times]) => {
-            const isBus = routeId.length > 2;
             return (
               <div key={routeId} className="flex items-center gap-2">
-                <span
-                  className={`text-on-primary inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-bold ${isBus ? "bg-primary" : "bg-danger"}`}
-                >
-                  {routeId}
-                </span>
+                <LineBadge routeId={routeId} />
                 <div className="flex flex-wrap gap-1">
                   {times.map((t) =>
                     t.arrivalTime !== null ? (
