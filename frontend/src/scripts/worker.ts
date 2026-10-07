@@ -17,7 +17,7 @@ const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 let cachedStops: StopData[] = [];
 let cachedActiveStopIds = new Set<string>();
 let cachedGroupedAll: GroupedStop[] = [];
-let fetchIntervalId: ReturnType<typeof setInterval> | null = null;
+let stopsFetchAbort: AbortController | null = null;
 
 function mergedBboxArea(group: StopGroup, stop: StopData) {
   const minLat = Math.min(group.minLat, stop.lat);
@@ -210,12 +210,18 @@ async function handleProcessMessage(eventData: Blob) {
   }
 }
 
-async function fetchAndProcessStops(): Promise<boolean> {
+const STOPS_POLL_MIN_MS = 60_000;
+const STOPS_POLL_SPREAD_MS = 60_000;
+const STOPS_RETRY_MIN_MS = 5_000;
+const STOPS_RETRY_SPREAD_MS = 5_000;
+
+async function fetchAndProcessStops(signal: AbortSignal): Promise<boolean> {
   try {
     const response = await fetch(`${API_URL}/v1/schedule/simple-stops`, {
       headers: {
         accept: "application/cbor,application/json",
       },
+      signal,
     });
 
     if (!response.ok) {
@@ -241,29 +247,48 @@ async function fetchAndProcessStops(): Promise<boolean> {
     postMessage(handleProcessedStops(stops));
     return true;
   } catch (err) {
+    if (signal.aborted) return false;
     console.error("[WORKER]", "Stops fetch error", err);
     return false;
   }
 }
 
-async function fetchWithRetry() {
-  let success = false;
-  while (!success) {
-    success = await fetchAndProcessStops();
-    if (!success) {
-      await new Promise((resolve) => setTimeout(resolve, 5000 + 5000 * Math.random()));
-    }
-  }
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
+// One self-perpetuating loop, not an interval that spawns a fresh retry loop on every
+// tick. Overlapping loops accumulated during an outage, so request rate grew with the
+// length of the outage, and clearing the interval could not cancel the loops already
+// running.
 function startFetchingStops() {
   stopFetchingStops();
-  fetchIntervalId = setInterval(() => void fetchWithRetry(), 60_000 + 60_000 * Math.random());
+  const abort = new AbortController();
+  stopsFetchAbort = abort;
+  const { signal } = abort;
+
+  void (async () => {
+    while (!signal.aborted) {
+      const ok = await fetchAndProcessStops(signal);
+      if (signal.aborted) break;
+      const min = ok ? STOPS_POLL_MIN_MS : STOPS_RETRY_MIN_MS;
+      const spread = ok ? STOPS_POLL_SPREAD_MS : STOPS_RETRY_SPREAD_MS;
+      await sleep(min + spread * Math.random(), signal);
+    }
+  })();
 }
 
 function stopFetchingStops() {
-  if (fetchIntervalId !== null) {
-    clearInterval(fetchIntervalId);
-    fetchIntervalId = null;
-  }
+  stopsFetchAbort?.abort();
+  stopsFetchAbort = null;
 }
