@@ -20,6 +20,9 @@ function stateLabel(state: FlagState): string {
 
 export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeEditorRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const page = usePageState(String(flag.id));
   const users = useUsers(page.options);
@@ -41,7 +44,7 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
     const dialog = dialogRef.current;
     const previousFocus = document.activeElement;
     dialog?.showModal();
-    dialog?.querySelector<HTMLButtonElement>("aside button")?.focus();
+    closeEditorRef.current?.focus();
     return () => {
       dialog?.close();
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
@@ -93,18 +96,8 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
       }}
       onKeyDown={(event) => {
         if (event.key !== "Tab") return;
-        const controls = Array.from(
-          event.currentTarget.querySelectorAll<HTMLElement>(
-            "button, input, textarea, select, a[href], [tabindex]",
-          ),
-        ).filter(
-          (element) =>
-            element.tabIndex >= 0 &&
-            !element.matches(":disabled") &&
-            element.getClientRects().length > 0,
-        );
-        const first = controls[0];
-        const last = controls[controls.length - 1];
+        const first = closeEditorRef.current;
+        const last = saveRef.current?.disabled ? closeRef.current : saveRef.current;
         if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
           last?.focus();
@@ -132,7 +125,12 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
                 <Badge className="bg-[#7f1d1d] text-[#fca5a5]">orphaned — not in code</Badge>
               ) : null}
             </div>
-            <Button variant="secondary" aria-label="Close flag editor" onClick={onClose}>
+            <Button
+              ref={closeEditorRef}
+              variant="secondary"
+              aria-label="Close flag editor"
+              onClick={onClose}
+            >
               ✕
             </Button>
           </div>
@@ -229,10 +227,10 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
           </div>
 
           <div className="mt-auto flex justify-end gap-2 pt-4">
-            <Button variant="secondary" onClick={onClose}>
+            <Button ref={closeRef} variant="secondary" onClick={onClose}>
               Close
             </Button>
-            <Button disabled={!dirty || update.isPending} onClick={() => void save()}>
+            <Button ref={saveRef} disabled={!dirty || update.isPending} onClick={() => void save()}>
               {update.isPending ? "Saving…" : "Save"}
             </Button>
           </div>

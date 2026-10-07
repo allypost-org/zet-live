@@ -33,6 +33,7 @@ export function VehicleSheet({
   onStopClick,
 }: Props) {
   const stopListRef = useRef<HTMLUListElement>(null);
+  const nextStopRef = useRef<HTMLLIElement>(null);
   const stopBadges = useMemo(() => {
     const lookup = buildArrivalTimeLookup(tripStopTimes);
 
@@ -68,11 +69,7 @@ export function VehicleSheet({
     const scrollToNextStop = () => {
       cancelAnimationOrIdleCallback(timeout);
       timeout = appRequestAnimationFrame(() => {
-        const $el = list.querySelector<HTMLElement>(`[data-is-next="true"]`);
-        if (!$el) {
-          return;
-        }
-        $el.scrollIntoView({
+        nextStopRef.current?.scrollIntoView({
           behavior: "smooth",
           block: "center",
         });
@@ -124,6 +121,7 @@ export function VehicleSheet({
             return (
               <li
                 key={`${stop.name}-${i}`}
+                ref={isNext ? nextStopRef : undefined}
                 data-is-next={isNext ? "true" : undefined}
                 className={`hover:bg-surface-hover flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors duration-300 hover:transition-none ${
                   isNext
