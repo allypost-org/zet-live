@@ -1,4 +1,9 @@
-export const BUILD_DATE = new Date(__DATE__);
+import { frontendVersionIdSchema } from "@/app/entity/v1/version";
+
+const frontendVersion = frontendVersionIdSchema.safeParse(
+  document.querySelector<HTMLMetaElement>('meta[name="zet-frontend-version"]')?.content,
+);
+export const FRONTEND_VERSION_ID = frontendVersion.success ? frontendVersion.data : null;
 
 export const SITE_TITLE = "ZET Live";
 

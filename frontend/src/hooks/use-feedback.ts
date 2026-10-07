@@ -1,4 +1,4 @@
-import { API_URL, BUILD_DATE } from "@/app/consts";
+import { API_URL, FRONTEND_VERSION_ID } from "@/app/consts";
 import { apiFetch } from "@/app/entity/v1/api";
 import { feedbackResponseSchema, type FeedbackPayload } from "@/app/entity/v1/feedback";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ function buildMetadata(): FeedbackPayload["meta"] {
     url: window.location.href.slice(0, 512),
     ua: navigator.userAgent.slice(0, 512),
     lang: navigator.language.slice(0, 64),
-    build: BUILD_DATE.toISOString().slice(0, 128),
+    build: FRONTEND_VERSION_ID ?? "development",
   };
 }
 

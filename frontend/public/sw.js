@@ -49,7 +49,7 @@ self.addEventListener("fetch", (event) => {
 async function networkFirstAppShell(req) {
   const cache = await caches.open(APP_CACHE);
   try {
-    const res = await fetch(req);
+    const res = await fetch(req, { cache: "no-cache" });
     if (res && res.ok) {
       await cache.put(req, res.clone());
     }

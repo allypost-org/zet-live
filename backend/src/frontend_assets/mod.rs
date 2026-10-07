@@ -12,6 +12,9 @@ const CACHE_NO_CACHE: HeaderValue = HeaderValue::from_static("no-cache, max-age=
 const CACHE_SHORT: HeaderValue = HeaderValue::from_static("public, max-age=3600, s-maxage=3600");
 
 fn cache_control_for_path(path: &str) -> HeaderValue {
+    if matches!(path, "sw.js" | "frontend-version.json") {
+        return CACHE_NO_CACHE;
+    }
     let path = Path::new(path);
 
     let first_segment = path.iter().next().unwrap_or_else(|| OsStr::new("/"));

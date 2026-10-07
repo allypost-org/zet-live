@@ -1,76 +1,144 @@
 import { useEffect } from "react";
-import { API_URL } from "@/app/consts";
+import { API_URL, FRONTEND_VERSION_ID } from "@/app/consts";
+import { frontendVersionIdSchema, versionResponseSchema } from "@/app/entity/v1/version";
 import { toast } from "sonner";
 
 const CHECK_INTERVAL = 60 * 1000;
 const AUTO_REFRESH_DELAY = 15 * 1000;
+const REQUEST_TIMEOUT = 10 * 1000;
 
-type VersionResponse = {
-  id: string;
-};
+const REFRESH_ATTEMPT_KEY = "zet-frontend-refresh-attempt";
+const UPDATE_TOAST_ID = "frontend-version-update";
 
-async function fetchVersionId(): Promise<string | null> {
+async function fetchVersionId(signal: AbortSignal): Promise<string | null> {
+  const controller = new AbortController();
+  const abort = () => {
+    controller.abort();
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(abort, REQUEST_TIMEOUT);
   try {
-    const response = await fetch(`${API_URL}/v1/version`);
+    if (signal.aborted) return null;
+    const response = await fetch(`${API_URL}/v1/version`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
     if (!response.ok) return null;
-    const data = (await response.json()) as VersionResponse;
-    return data.id;
+    const data = versionResponseSchema.safeParse(await response.json());
+    return data.success ? data.data.frontendId : null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
+    signal.removeEventListener("abort", abort);
   }
 }
 
 export function useVersionCheck() {
   useEffect(() => {
-    let initialVersionId: string | null = null;
+    if (FRONTEND_VERSION_ID === null) return;
+    const frontendId = FRONTEND_VERSION_ID;
+
+    const controller = new AbortController();
+    let active = true;
+    let checking = false;
+    let pendingVersionId: string | null = null;
     let dismissedVersionId: string | null = null;
-    let initialized = false;
     let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
-    async function checkVersion() {
-      const serverId = await fetchVersionId();
-      if (serverId === null) return;
+    function clearReloadTimer() {
+      if (reloadTimer !== null) {
+        clearTimeout(reloadTimer);
+        reloadTimer = null;
+      }
+    }
 
-      if (!initialized) {
-        initialVersionId = serverId;
-        initialized = true;
+    async function checkVersion() {
+      if (checking) return;
+      checking = true;
+      const serverId = await fetchVersionId(controller.signal);
+      checking = false;
+      if (!active || serverId === null) return;
+
+      if (serverId === frontendId) {
+        clearReloadTimer();
+        pendingVersionId = null;
+        toast.dismiss(UPDATE_TOAST_ID);
+        try {
+          window.sessionStorage.removeItem(REFRESH_ATTEMPT_KEY);
+        } catch {
+          // Storage can be unavailable in restricted browser contexts.
+        }
         return;
       }
 
-      if (serverId === initialVersionId) return;
       if (serverId === dismissedVersionId) return;
+      if (serverId === pendingVersionId) return;
 
-      reloadTimer = setTimeout(() => {
-        window.location.reload();
-      }, AUTO_REFRESH_DELAY);
+      clearReloadTimer();
+      pendingVersionId = serverId;
+      let autoRefresh = false;
+      try {
+        const stored = window.sessionStorage.getItem(REFRESH_ATTEMPT_KEY);
+        const attempt = frontendVersionIdSchema.safeParse(stored);
+        autoRefresh = !attempt.success || attempt.data !== frontendId;
+      } catch {
+        // Automatic reloads need persistent state to prevent a reload loop.
+      }
 
-      toast.info("New version available", {
-        description: "The page will refresh automatically in 15 seconds.",
-        duration: AUTO_REFRESH_DELAY + 1000,
-        action: {
-          label: "Refresh now",
-          onClick: () => {
-            window.location.reload();
-          },
-        },
-        onDismiss: () => {
-          if (reloadTimer !== null) {
-            clearTimeout(reloadTimer);
-            reloadTimer = null;
+      function refreshPage(automatic: boolean) {
+        if (!active) return;
+        clearReloadTimer();
+        try {
+          window.sessionStorage.setItem(REFRESH_ATTEMPT_KEY, frontendId);
+        } catch {
+          if (automatic) {
+            showUpdateToast(false);
+            return;
           }
-          dismissedVersionId = serverId;
-        },
-      });
+        }
+        window.location.reload();
+      }
+
+      if (autoRefresh) {
+        reloadTimer = setTimeout(() => {
+          refreshPage(true);
+        }, AUTO_REFRESH_DELAY);
+      }
+
+      function showUpdateToast(automatic: boolean) {
+        toast.info("New version available", {
+          id: UPDATE_TOAST_ID,
+          description: automatic
+            ? "The page will refresh automatically in 15 seconds."
+            : "Refresh the page to load the latest version.",
+          duration: automatic ? AUTO_REFRESH_DELAY + 1000 : Infinity,
+          action: {
+            label: "Refresh now",
+            onClick: () => {
+              refreshPage(false);
+            },
+          },
+          onDismiss: () => {
+            if (!active || pendingVersionId !== serverId) return;
+            clearReloadTimer();
+            pendingVersionId = null;
+            dismissedVersionId = serverId;
+          },
+        });
+      }
+      showUpdateToast(autoRefresh);
     }
 
     void checkVersion();
     const intervalId = setInterval(() => void checkVersion(), CHECK_INTERVAL);
 
     return () => {
+      active = false;
+      controller.abort();
       clearInterval(intervalId);
-      if (reloadTimer !== null) {
-        clearTimeout(reloadTimer);
-      }
+      clearReloadTimer();
+      toast.dismiss(UPDATE_TOAST_ID);
     };
   }, []);
 }

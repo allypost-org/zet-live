@@ -1,10 +1,10 @@
 use std::sync::LazyLock;
 
-use axum::Json;
+use axum::{Json, http::header, response::IntoResponse};
 
 use crate::config::project::ProjectConfig;
 
-pub async fn get_version() -> Json<serde_json::Value> {
+pub async fn get_version() -> impl IntoResponse {
     static INFO: LazyLock<serde_json::Value> = LazyLock::new(|| {
         let info = ProjectConfig::build_info();
 
@@ -25,6 +25,7 @@ pub async fn get_version() -> Json<serde_json::Value> {
             "version": ProjectConfig::app_version(),
             "built": ProjectConfig::build_date(),
             "id": id,
+            "frontendId": crate::server::routes::frontend::SpaAssets::version_id(),
         });
         let ret = ret.as_object_mut().expect("Value is object");
 
@@ -39,7 +40,7 @@ pub async fn get_version() -> Json<serde_json::Value> {
         serde_json::json!(ret)
     });
 
-    Json(INFO.clone())
+    ([(header::CACHE_CONTROL, "no-store")], Json(INFO.clone()))
 }
 
 fn encode_hex(data: &[u8]) -> String {

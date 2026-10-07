@@ -150,6 +150,58 @@ function modulePreloadMap(): Plugin {
   };
 }
 
+function frontendVersion(): Plugin {
+  let publicDir = "";
+
+  return {
+    name: "zet-live:frontend-version",
+    apply: "build",
+    enforce: "post",
+    configResolved(config) {
+      publicDir = config.publicDir;
+    },
+    generateBundle: {
+      order: "post",
+      handler(_options, bundle) {
+        const files = new Map<string, string | Uint8Array>();
+        for (const [fileName, output] of Object.entries(bundle)) {
+          files.set(fileName, output.type === "chunk" ? output.code : output.source);
+        }
+        if (publicDir && fs.existsSync(publicDir)) {
+          for (const fileName of fs.readdirSync(publicDir, { recursive: true })) {
+            const fullPath = path.join(publicDir, fileName);
+            if (fs.statSync(fullPath).isFile()) {
+              files.set(fileName.split(path.sep).join("/"), fs.readFileSync(fullPath));
+            }
+          }
+        }
+
+        const hash = createHash("sha256");
+        for (const fileName of [...files.keys()].sort()) {
+          const digest = createHash("sha256").update(files.get(fileName)!).digest("hex");
+          hash.update(JSON.stringify([fileName, digest]));
+        }
+        const id = hash.digest("hex");
+        const index = bundle["index.html"];
+        if (index?.type !== "asset" || typeof index.source !== "string") {
+          this.error("Frontend version requires index.html");
+        }
+
+        // Stamp the HTML after hashing so the version does not depend on itself.
+        index.source = index.source.replace(
+          "</head>",
+          `  <meta name="zet-frontend-version" content="${id}" />\n</head>`,
+        );
+        this.emitFile({
+          type: "asset",
+          fileName: "frontend-version.json",
+          source: JSON.stringify({ id }),
+        });
+      },
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const siteUrl = (env.VITE_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
@@ -162,10 +214,8 @@ export default defineConfig(({ mode }) => {
       webmanifest(),
       seo(siteUrl),
       modulePreloadMap(),
+      frontendVersion(),
     ],
-    define: {
-      __DATE__: `"${new Date().toISOString()}"`,
-    },
     build: {
       rollupOptions: {
         output: {
