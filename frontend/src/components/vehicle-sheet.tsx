@@ -1,9 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
 import type { TripStopTimeEntry } from "@/app/trip-stop-times";
 import { buildArrivalTimeLookup, lookupStopArrivalTime } from "@/app/trip-stop-times";
 import {
-  appRequestIdleCallback,
   appRequestAnimationFrame,
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
@@ -33,6 +32,7 @@ export function VehicleSheet({
   onLocate,
   onStopClick,
 }: Props) {
+  const stopListRef = useRef<HTMLUListElement>(null);
   const stopBadges = useMemo(() => {
     const lookup = buildArrivalTimeLookup(tripStopTimes);
 
@@ -60,11 +60,15 @@ export function VehicleSheet({
   }, [displayedStops, nextStopIndex, tripStopTimes, vehicle.nextStopArrivalTime]);
 
   useEffect(() => {
-    let timeout = appRequestIdleCallback(() => {
+    const list = stopListRef.current;
+    const scroller = list?.parentElement;
+    if (!list || !scroller) return;
+
+    let timeout: number | null = null;
+    const scrollToNextStop = () => {
+      cancelAnimationOrIdleCallback(timeout);
       timeout = appRequestAnimationFrame(() => {
-        const $el = document.querySelector<HTMLElement>(
-          `.bottom-vehicle-stop-list [data-is-next="true"]`,
-        );
+        const $el = list.querySelector<HTMLElement>(`[data-is-next="true"]`);
         if (!$el) {
           return;
         }
@@ -73,12 +77,19 @@ export function VehicleSheet({
           block: "center",
         });
       });
-    });
+    };
+
+    // The fetched list and the sheet's animated height can settle at different times.
+    const observer = new ResizeObserver(scrollToNextStop);
+    observer.observe(list);
+    observer.observe(scroller);
+    scrollToNextStop();
 
     return () => {
+      observer.disconnect();
       cancelAnimationOrIdleCallback(timeout);
     };
-  }, [vehicle.id]);
+  }, [vehicle.id, displayedStops, nextStopIndex]);
 
   return (
     <div className="flex max-h-full flex-col">
@@ -104,7 +115,7 @@ export function VehicleSheet({
             <span className="whitespace-pre-wrap">{tripFetchError}</span>
           </div>
         ) : null}
-        <ul className="bottom-vehicle-stop-list space-y-0.5">
+        <ul ref={stopListRef} className="bottom-vehicle-stop-list space-y-0.5">
           {displayedStops.map((stop, i) => {
             const isNext = i === nextStopIndex;
             const isPassed = nextStopIndex >= 0 && i < nextStopIndex;

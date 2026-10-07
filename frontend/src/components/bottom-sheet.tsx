@@ -58,11 +58,12 @@ export function BottomSheet({
   const measureContent = useCallback(() => {
     const body = contentRef.current?.firstElementChild as HTMLElement | null;
     if (!body) return 0;
-    const previous = body.style.maxHeight;
-    body.style.maxHeight = "none";
-    const measured = body.offsetHeight;
-    body.style.maxHeight = previous;
-    return measured;
+    // Unconstraining the live body resets its children's scroll positions.
+    const overflow = Array.from(body.children).reduce(
+      (total, child) => total + Math.max(0, child.scrollHeight - child.clientHeight),
+      0,
+    );
+    return Math.max(body.scrollHeight, body.offsetHeight + overflow);
   }, []);
 
   const getHeights = useCallback(() => {
@@ -87,10 +88,13 @@ export function BottomSheet({
     const region = contentRef.current;
     if (!region) return;
 
+    let lastTarget: number | null = null;
     const resize = () => {
       if (dragging.current) return;
       contentHeightRef.current = measureContent();
       const target = getHeights()[sheetState];
+      if (target === lastTarget) return;
+      lastTarget = target;
       if (height.get() === 0) height.set(target);
       else animate(height, target, SPRING);
     };
@@ -109,7 +113,7 @@ export function BottomSheet({
       observeBody();
       resize();
     });
-    swapObserver.observe(region, { childList: true });
+    swapObserver.observe(region, { childList: true, subtree: true, characterData: true });
 
     const chromeObserver = new ResizeObserver(resize);
     for (const element of [headerRef.current, summaryRef.current]) {
