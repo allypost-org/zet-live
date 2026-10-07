@@ -16,12 +16,13 @@ import {
   type UserEdit,
   type UserSummary,
   adminSettingsSchema,
+  adminSessionInfoSchema,
+  pageSchema,
   authProvidersResponseSchema,
   connectionsSchema,
   feedbackRowSchema,
   featureFlagRowSchema,
   metadataMapSchema,
-  sessionInfoSchema,
   toastPayloadSchema,
   userDetailSchema,
   userNoticeRowSchema,
@@ -76,11 +77,28 @@ export function useAuthProviders() {
   });
 }
 
-export function useUsers() {
+export interface PageOptions {
+  cursor?: string;
+  search: string;
+  sort: string;
+  descending: boolean;
+}
+
+function pagePath(path: string, page: PageOptions) {
+  const params = new URLSearchParams({
+    search: page.search,
+    sort: page.sort,
+    descending: String(page.descending),
+  });
+  if (page.cursor) params.set("cursor", page.cursor);
+  return `${path}${path.includes("?") ? "&" : "?"}${params.toString()}`;
+}
+
+export function useUsers(page: PageOptions) {
   return useQuery({
-    queryKey: qk.users,
+    queryKey: [...qk.users, "list", page],
     queryFn: async ({ signal }) =>
-      parse(userSummarySchema.array(), await api.get("/users", signal)),
+      parse(pageSchema(userSummarySchema), await api.get(pagePath("/users", page), signal)),
   });
 }
 
@@ -107,28 +125,34 @@ export function useUpdateUser(id: string) {
   });
 }
 
-export function useSessions() {
+export function useSessions(page: PageOptions) {
   return useQuery({
-    queryKey: qk.sessions,
+    queryKey: [...qk.sessions, page],
     queryFn: async ({ signal }) =>
-      parse(sessionInfoSchema.array(), await api.get("/sessions", signal)),
+      parse(pageSchema(adminSessionInfoSchema), await api.get(pagePath("/sessions", page), signal)),
   });
 }
 
-export function useUserNotices() {
+export function useUserNotices(page: PageOptions) {
   return useQuery({
-    queryKey: qk.userNotices,
+    queryKey: [...qk.userNotices, page],
     queryFn: async ({ signal }) =>
-      parse(userNoticeRowSchema.array(), await api.get("/user-notices", signal)),
+      parse(
+        pageSchema(userNoticeRowSchema),
+        await api.get(pagePath("/user-notices", page), signal),
+      ),
   });
 }
 
-export function useFeedback(filter: FeedbackFilter) {
+export function useFeedback(filter: FeedbackFilter, page: PageOptions) {
   return useQuery({
-    queryKey: qk.feedback(filter),
+    queryKey: [...qk.feedback(filter), page],
     queryFn: async ({ signal }) => {
-      const data = await api.get(`/feedback?handled=${encodeURIComponent(filter)}`, signal);
-      return parse(feedbackRowSchema.array(), data);
+      const data = await api.get(
+        pagePath(`/feedback?handled=${encodeURIComponent(filter)}`, page),
+        signal,
+      );
+      return parse(pageSchema(feedbackRowSchema), data);
     },
   });
 }

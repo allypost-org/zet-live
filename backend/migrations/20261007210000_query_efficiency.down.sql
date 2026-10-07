@@ -1,0 +1,16 @@
+DROP INDEX idx_feedback__pending__created_at__id;
+DROP INDEX idx_feedback__created_at__id;
+DROP INDEX idx_user_notices__created_at__id;
+DROP INDEX idx_user_sessions__created_at__id;
+DROP INDEX idx_users__created_at__id;
+
+DROP INDEX idx_feature_flag_scoped_users__user_id;
+DROP INDEX idx_pending_transfers__target_user_id;
+DROP INDEX idx_pending_transfers__source_user_id;
+DROP INDEX idx_link_tickets__user_id;
+DROP INDEX idx_oauth_states__user_id;
+
+CREATE INDEX idx_live_vehicles__route_id ON live_vehicles(route_id);
+CREATE INDEX idx_live_trips__trip_id ON live_trips(trip_id);
+
+DROP INDEX idx_gtfs_stop_times__stop_id__departure_time_seconds;

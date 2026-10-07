@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                    SELECT\n                          route_id\n                        , NULLIF(route_long_name, '') AS route_long_name\n                    FROM gtfs_routes\n                    WHERE route_id = ANY($1)\n                    ",
+  "query": "SELECT route_id, NULLIF(route_long_name, '') AS route_name FROM gtfs_routes",
   "describe": {
     "columns": [
       {
@@ -16,20 +16,18 @@
       },
       {
         "ordinal": 1,
-        "name": "route_long_name",
+        "name": "route_name",
         "type_info": "Text",
         "origin": "Expression"
       }
     ],
     "parameters": {
-      "Left": [
-        "TextArray"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
       null
     ]
   },
-  "hash": "8f0aceda7107c812a6c3dc782c43c7865e57a8f7a7cab1e04d7bfb5c4fc02667"
+  "hash": "6b0393bc7904de28e0816c49198ec47a1d5ce739ff4d6b6fbc825c5d43322e16"
 }

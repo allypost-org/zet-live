@@ -12,6 +12,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 
+import { PageControls, type PageState } from "@/components/page-controls";
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ interface DataTableProps<T> {
   pageSize?: number;
   onRowClick?: (row: T) => void;
   emptyMessage?: string;
+  serverPage?: { page: PageState; nextCursor?: string | null; busy: boolean };
 }
 
 export function DataTable<T>({
@@ -33,6 +35,7 @@ export function DataTable<T>({
   pageSize = 25,
   onRowClick,
   emptyMessage = "No data.",
+  serverPage,
 }: DataTableProps<T>) {
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -49,9 +52,18 @@ export function DataTable<T>({
   const table = useReactTable({
     data,
     columns,
-    state: { globalFilter, sorting, pagination },
+    state: {
+      globalFilter: serverPage?.page.options.search ?? globalFilter,
+      sorting: serverPage?.page.sorting ?? sorting,
+      pagination,
+    },
+    manualFiltering: !!serverPage,
+    manualPagination: !!serverPage,
+    manualSorting: !!serverPage,
+    enableMultiSort: !serverPage,
+    enableSortingRemoval: !serverPage,
     onGlobalFilterChange: setGlobalFilter,
-    onSortingChange: setSorting,
+    onSortingChange: serverPage?.page.setSorting ?? setSorting,
     onPaginationChange: setPagination,
     globalFilterFn: customFilter ?? "includesString",
     getCoreRowModel: getCoreRowModel(),
@@ -68,9 +80,10 @@ export function DataTable<T>({
       <Input
         type="text"
         placeholder={searchPlaceholder}
-        value={globalFilter}
+        value={serverPage?.page.options.search ?? globalFilter}
         onChange={(e) => {
-          setGlobalFilter(e.target.value);
+          if (serverPage) serverPage.page.setSearch(e.target.value);
+          else setGlobalFilter(e.target.value);
         }}
         className="max-w-xs"
       />
@@ -146,7 +159,8 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {pageCount > 1 && (
+      {serverPage && <PageControls {...serverPage} />}
+      {!serverPage && pageCount > 1 && (
         <div className="text-text-muted flex items-center gap-3 text-xs">
           <Button
             variant="secondary"

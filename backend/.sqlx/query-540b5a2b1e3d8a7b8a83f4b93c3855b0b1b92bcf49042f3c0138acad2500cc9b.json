@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "ANALYZE gtfs_routes, gtfs_shapes, gtfs_stops, gtfs_trips, gtfs_calendar, gtfs_calendar_dates, gtfs_stop_times",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "540b5a2b1e3d8a7b8a83f4b93c3855b0b1b92bcf49042f3c0138acad2500cc9b"
+}

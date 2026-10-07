@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sqlx::{Postgres, QueryBuilder};
 
 use super::GbfsFeed;
 use crate::database::Database;
@@ -36,6 +37,8 @@ pub struct StationStatusData {
     pub stations: Vec<StationStatus>,
 }
 
+const BATCH_SIZE: usize = 2_048;
+
 pub struct Feed;
 
 #[async_trait::async_trait]
@@ -51,43 +54,46 @@ impl GbfsFeed for Feed {
             .execute(&mut *tx)
             .await?;
 
-        for station in &data.stations {
-            let vehicle_types_available = match &station.vehicle_types_available {
-                Some(value) => Some(serde_json::to_string(value)?),
-                None => None,
-            };
-            #[allow(clippy::cast_possible_truncation)]
-            let num_bikes_available = station.num_bikes_available.map(|v| v as i32);
-            #[allow(clippy::cast_possible_truncation)]
-            let num_docks_available = station.num_docks_available.map(|v| v as i32);
-
-            sqlx::query!(
-                "
-                        INSERT INTO
-                        gbfs_station_status
-                            ( station_id
-                            , num_bikes_available
-                            , num_docks_available
-                            , is_installed
-                            , is_renting
-                            , is_returning
-                            , last_reported
-                            , vehicle_types_available
-                            )
-                        VALUES
-                            ( $1, $2, $3, $4, $5, $6, $7, $8 )
-                        ",
-                station.station_id,
-                num_bikes_available,
-                num_docks_available,
-                station.is_installed,
-                station.is_renting,
-                station.is_returning,
-                station.last_reported,
-                vehicle_types_available,
-            )
-            .execute(&mut *tx)
-            .await?;
+        for batch in data.stations.chunks(BATCH_SIZE) {
+            let rows = batch
+                .iter()
+                .map(|station| {
+                    let vehicle_types_available = station
+                        .vehicle_types_available
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()?;
+                    #[allow(clippy::cast_possible_truncation)]
+                    let num_bikes_available = station.num_bikes_available.map(|v| v as i32);
+                    #[allow(clippy::cast_possible_truncation)]
+                    let num_docks_available = station.num_docks_available.map(|v| v as i32);
+                    Ok::<_, serde_json::Error>((
+                        station,
+                        num_bikes_available,
+                        num_docks_available,
+                        vehicle_types_available,
+                    ))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO gbfs_station_status
+                 (station_id, num_bikes_available, num_docks_available, is_installed,
+                  is_renting, is_returning, last_reported, vehicle_types_available) ",
+            );
+            query.push_values(
+                &rows,
+                |mut row, (station, bikes, docks, vehicle_types_available)| {
+                    row.push_bind(&station.station_id)
+                        .push_bind(bikes)
+                        .push_bind(docks)
+                        .push_bind(station.is_installed)
+                        .push_bind(station.is_renting)
+                        .push_bind(station.is_returning)
+                        .push_bind(station.last_reported)
+                        .push_bind(vehicle_types_available);
+                },
+            );
+            query.build().persistent(false).execute(&mut *tx).await?;
         }
 
         tx.commit().await?;

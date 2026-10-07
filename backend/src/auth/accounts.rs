@@ -1,7 +1,5 @@
-use tracing::error;
-
 use crate::{
-    auth::{User, oauth::ProviderUserInfo, session},
+    auth::{oauth::ProviderUserInfo, session},
     database::Database,
 };
 
@@ -436,36 +434,6 @@ pub async fn identities_for_user(user_id: &str) -> Result<Vec<IdentityPublic>, s
         .collect())
 }
 
-pub async fn user_by_id(id: &str) -> Option<User> {
-    match sqlx::query!(
-        "
-        SELECT
-              id
-            , display_name
-            , email
-            , avatar_url
-        FROM users
-        WHERE id = $1
-        ",
-        id,
-    )
-    .fetch_optional(&Database::pool())
-    .await
-    {
-        Ok(Some(row)) => Some(User {
-            id: row.id,
-            display_name: row.display_name,
-            email: row.email,
-            avatar_url: row.avatar_url,
-        }),
-        Ok(None) => None,
-        Err(e) => {
-            error!(error = %e, "Failed to fetch user by id");
-            None
-        }
-    }
-}
-
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserSummary {
@@ -497,9 +465,38 @@ pub async fn delete_user(user_id: &str) -> Result<DeleteUserResult, sqlx::Error>
     })
 }
 
-pub async fn list_users() -> Result<Vec<UserSummary>, sqlx::Error> {
+pub async fn list_users(
+    page: &crate::admin::pagination::PageRequest,
+) -> Result<crate::admin::pagination::Page<UserSummary>, sqlx::Error> {
+    // CASE ordering needs a custom plan to use the selected ordering/filter index.
+    let mut tx = Database::pool().begin().await?;
+    sqlx::query("SET LOCAL plan_cache_mode = 'force_custom_plan'")
+        .execute(&mut *tx)
+        .await?;
     let rows = sqlx::query!(
         "
+        WITH page AS MATERIALIZED (
+            SELECT u.* FROM users u
+            WHERE ($3 = '%%' OR concat_ws(' ', u.display_name, u.email,
+                       (SELECT string_agg(provider, ' ' ORDER BY created_at)
+                        FROM user_oauth_identities WHERE user_id = u.id), u.id) ILIKE $3)
+            ORDER BY CASE WHEN $1 = 'createdAt' AND NOT $2 THEN u.created_at END ASC,
+                     CASE WHEN $1 = 'createdAt' AND $2 THEN u.created_at END DESC,
+                     CASE WHEN $1 = 'displayName' AND NOT $2 THEN u.display_name END ASC NULLS \
+         LAST,
+                     CASE WHEN $1 = 'displayName' AND $2 THEN u.display_name END DESC NULLS LAST,
+                     CASE WHEN $1 = 'email' AND NOT $2 THEN u.email END ASC NULLS LAST,
+                     CASE WHEN $1 = 'email' AND $2 THEN u.email END DESC NULLS LAST,
+                     CASE WHEN $1 = 'providers' AND NOT $2 THEN (SELECT COUNT(*) FROM \
+         user_oauth_identities i WHERE i.user_id = u.id) END ASC NULLS LAST,
+                     CASE WHEN $1 = 'providers' AND $2 THEN (SELECT COUNT(*) FROM \
+         user_oauth_identities i WHERE i.user_id = u.id) END DESC NULLS LAST,
+                     CASE WHEN $1 = 'noticeCount' AND NOT $2 THEN (SELECT COUNT(*) FROM \
+         user_notices n WHERE n.user_id = u.id) END ASC NULLS LAST,
+                     CASE WHEN $1 = 'noticeCount' AND $2 THEN (SELECT COUNT(*) FROM user_notices n \
+         WHERE n.user_id = u.id) END DESC NULLS LAST, u.id DESC
+            LIMIT $4 OFFSET $5
+        )
         SELECT u.id,
                u.display_name,
                u.email,
@@ -510,14 +507,34 @@ pub async fn list_users() -> Result<Vec<UserSummary>, sqlx::Error> {
                ) AS \"providers!: String\",
                u.created_at AS \"created_at!: time::OffsetDateTime\",
                (SELECT COUNT(*) FROM user_notices WHERE user_id = u.id) AS \"notice_count!: i64\"
-        FROM users u
-        ORDER BY u.created_at DESC
-        "
+        FROM page u
+        ORDER BY CASE WHEN $1 = 'createdAt' AND NOT $2 THEN u.created_at END ASC,
+                     CASE WHEN $1 = 'createdAt' AND $2 THEN u.created_at END DESC,
+                     CASE WHEN $1 = 'displayName' AND NOT $2 THEN u.display_name END ASC NULLS \
+         LAST,
+                     CASE WHEN $1 = 'displayName' AND $2 THEN u.display_name END DESC NULLS LAST,
+                     CASE WHEN $1 = 'email' AND NOT $2 THEN u.email END ASC NULLS LAST,
+                     CASE WHEN $1 = 'email' AND $2 THEN u.email END DESC NULLS LAST,
+                     CASE WHEN $1 = 'providers' AND NOT $2 THEN (SELECT COUNT(*) FROM \
+         user_oauth_identities i WHERE i.user_id = u.id) END ASC NULLS LAST,
+                     CASE WHEN $1 = 'providers' AND $2 THEN (SELECT COUNT(*) FROM \
+         user_oauth_identities i WHERE i.user_id = u.id) END DESC NULLS LAST,
+                     CASE WHEN $1 = 'noticeCount' AND NOT $2 THEN (SELECT COUNT(*) FROM \
+         user_notices n WHERE n.user_id = u.id) END ASC NULLS LAST,
+                     CASE WHEN $1 = 'noticeCount' AND $2 THEN (SELECT COUNT(*) FROM user_notices n \
+         WHERE n.user_id = u.id) END DESC NULLS LAST, u.id DESC
+        ",
+        page.sort.as_str(),
+        page.descending,
+        page.search,
+        page.fetch_limit(),
+        page.offset,
     )
-    .fetch_all(&Database::pool())
+    .fetch_all(&mut *tx)
     .await?;
+    tx.commit().await?;
 
-    Ok(rows
+    let items = rows
         .into_iter()
         .map(|u| UserSummary {
             id: u.id,
@@ -531,7 +548,8 @@ pub async fn list_users() -> Result<Vec<UserSummary>, sqlx::Error> {
             created_at: crate::database::time::to_jiff(u.created_at),
             notice_count: u.notice_count,
         })
-        .collect())
+        .collect();
+    Ok(crate::admin::pagination::Page::new(items, page))
 }
 
 pub async fn user_summary_by_id(id: &str) -> Result<Option<UserSummary>, sqlx::Error> {

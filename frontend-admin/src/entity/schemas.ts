@@ -94,6 +94,10 @@ export const userSummarySchema = z.object({
 });
 export type UserSummary = z.infer<typeof userSummarySchema>;
 
+export function pageSchema<T extends z.ZodTypeAny>(itemSchema: T) {
+  return z.object({ items: itemSchema.array(), nextCursor: z.string().nullable() });
+}
+
 export const sessionInfoSchema = z.object({
   id: z.string(),
   userId: z.string(),
@@ -103,6 +107,11 @@ export const sessionInfoSchema = z.object({
   userAgent: z.string().nullable().optional(),
 });
 export type SessionInfo = z.infer<typeof sessionInfoSchema>;
+export const adminSessionInfoSchema = sessionInfoSchema.extend({
+  userDisplayName: z.string().nullable(),
+  userEmail: z.string().nullable(),
+});
+export type AdminSessionInfo = z.infer<typeof adminSessionInfoSchema>;
 
 export const globalNoticeForUserSchema = z.object({
   id: z.string(),

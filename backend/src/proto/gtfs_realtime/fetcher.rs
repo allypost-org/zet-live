@@ -7,14 +7,14 @@ use std::{
 };
 
 use prost::Message;
-use tokio::sync::{Notify, RwLock};
+use tokio::sync::{Notify, watch};
 use tracing::{debug, trace, warn};
 
 use super::data::transit_realtime::FeedMessage;
 use crate::{admin, cli::Config, http_client::HTTP_CLIENT};
 
-static FEED: LazyLock<RwLock<Option<Arc<FeedMessage>>>> = LazyLock::new(|| RwLock::new(None));
-static FEED_NOTIFICATION: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
+static FEED: LazyLock<watch::Sender<Option<Arc<FeedMessage>>>> =
+    LazyLock::new(|| watch::channel(None).0);
 static FORCE_SYNC: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
 static FORCE_FLAG: AtomicBool = AtomicBool::new(false);
 
@@ -69,13 +69,22 @@ pub async fn fetch_feed() -> Result<FeedMessage, FetcherError> {
 }
 
 pub async fn get_cached_feed() -> Option<Arc<FeedMessage>> {
-    FEED.read().await.clone()
+    FEED.borrow().clone()
+}
+
+pub fn subscribe_feed() -> watch::Receiver<Option<Arc<FeedMessage>>> {
+    FEED.subscribe()
 }
 
 pub async fn wait_for_feed_update() -> Arc<FeedMessage> {
-    FEED_NOTIFICATION.notified().await;
-
-    get_cached_feed().await.expect("Feed should be present")
+    let mut updates = subscribe_feed();
+    loop {
+        let feed = updates.borrow_and_update().clone();
+        if let Some(feed) = feed {
+            return feed;
+        }
+        updates.changed().await.expect("feed sender remains alive");
+    }
 }
 
 async fn fetch_and_update_feed(after_timestamp: u64, forced: bool) -> Option<u64> {
@@ -115,10 +124,7 @@ async fn fetch_and_update_feed(after_timestamp: u64, forced: bool) -> Option<u64
     trace!(forced, timestamp = ?timestamp, "Got newer feed");
 
     let entity_count = feed.entity.len();
-    *FEED.write().await = Some(Arc::new(feed));
-
-    trace!("Notifying feed fetcher");
-    FEED_NOTIFICATION.notify_waiters();
+    FEED.send_replace(Some(Arc::new(feed)));
 
     admin::metadata::write_metadata(
         METADATA_NAME,

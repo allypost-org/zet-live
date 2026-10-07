@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                  f.id            AS \"id!\"\n                , f.category      AS \"category!\"\n                , f.message       AS \"message!\"\n                , f.name\n                , f.contact\n                , f.meta_url\n                , f.meta_ua\n                , f.meta_lang\n                , f.meta_build\n                , f.ip            AS \"ip!\"\n                , f.created_at    AS \"created_at!: time::OffsetDateTime\"\n                , f.handled       AS \"handled!\"\n                , f.dismissed     AS \"dismissed!\"\n                , f.reply\n                , f.replied_at   AS \"replied_at: time::OffsetDateTime\"\n                , f.user_id\n                , u.email         AS \"user_email\"\n                , u.display_name  AS \"user_display_name\"\n            FROM feedback f\n            LEFT JOIN users u ON u.id = f.user_id\n            WHERE f.handled OR f.dismissed OR f.reply IS NOT NULL\n            ORDER BY f.created_at DESC\n            ",
+  "query": "\n            SELECT\n                  f.id            AS \"id!\"\n                , f.category      AS \"category!\"\n                , f.message       AS \"message!\"\n                , f.name\n                , f.contact\n                , f.meta_url\n                , f.meta_ua\n                , f.meta_lang\n                , f.meta_build\n                , f.ip            AS \"ip!\"\n                , f.created_at    AS \"created_at!: time::OffsetDateTime\"\n                , f.handled       AS \"handled!\"\n                , f.dismissed     AS \"dismissed!\"\n                , f.reply\n                , f.replied_at   AS \"replied_at: time::OffsetDateTime\"\n                , f.user_id\n                , u.email         AS \"user_email\"\n                , u.display_name  AS \"user_display_name\"\n            FROM feedback f\n            LEFT JOIN users u ON u.id = f.user_id\n            WHERE ($6 = 'all'\n                   OR ($6 = 'new' AND NOT f.handled AND NOT f.dismissed AND f.reply IS NULL)\n                   OR ($6 = 'archived' AND (f.handled OR f.dismissed OR f.reply IS NOT NULL)))\n              AND ($3 = '%%' OR concat_ws(' ', f.id, f.category, f.message, f.name, f.contact, f.ip, f.reply, u.email, u.display_name) ILIKE $3)\n            ORDER BY CASE WHEN $1 = 'createdAt' AND NOT $2 THEN f.created_at END ASC,\n                     CASE WHEN $1 = 'createdAt' AND $2 THEN f.created_at END DESC, f.id DESC\n            LIMIT $4 OFFSET $5\n            ",
   "describe": {
     "columns": [
       {
@@ -203,7 +203,14 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Text",
+        "Bool",
+        "Text",
+        "Int8",
+        "Int8",
+        "Text"
+      ]
     },
     "nullable": [
       false,
@@ -226,5 +233,5 @@
       true
     ]
   },
-  "hash": "808418c18680e3a29a15ed6d31d7c97f7df0b242d2f2293bc4d16dadde73f60f"
+  "hash": "46c2f3852b9f35133154b10fe9fd6987bd38b0807e4e204415d8a1306e4fd8db"
 }

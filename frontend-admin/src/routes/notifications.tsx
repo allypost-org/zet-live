@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { PageControls, usePageState } from "@/components/page-controls";
 import { Button, Card, Input, Select } from "@/components/ui";
 import {
   type NotificationTarget,
@@ -13,7 +14,8 @@ import { userLabel } from "@/lib/utils";
 
 export function NotificationsRoute() {
   const { data: connections } = useConnections();
-  const { data: users } = useUsers();
+  const page = usePageState();
+  const users = useUsers(page.options);
   const send = useSendNotify();
 
   const [message, setMessage] = useState("");
@@ -21,10 +23,11 @@ export function NotificationsRoute() {
   const [target, setTarget] = useState<NotificationTarget>("all");
   const [selectedIps, setSelectedIps] = useState<Set<string>>(new Set());
   const [accountId, setAccountId] = useState("");
+  const [accountLabel, setAccountLabel] = useState("");
 
   const ipEntries = Object.entries(connections ?? []);
-  const userOptions = users ?? [];
-  const effectiveAccountId = accountId || userOptions[0]?.id || "";
+  const userOptions = users.data?.items ?? [];
+  const effectiveAccountId = accountId;
 
   async function submit() {
     if (!message.trim()) return;
@@ -123,24 +126,39 @@ export function NotificationsRoute() {
           )}
 
           {target === "account" && (
-            <Select
-              value={effectiveAccountId}
-              onChange={(e) => {
-                setAccountId(e.target.value);
-              }}
-            >
-              {userOptions.length === 0 ? (
-                <option value="" disabled>
-                  No accounts
-                </option>
-              ) : (
-                userOptions.map((u) => (
+            <div className="flex flex-col gap-2">
+              <Input
+                placeholder="Search all accounts…"
+                value={page.options.search}
+                onChange={(e) => {
+                  page.setSearch(e.target.value);
+                }}
+              />
+              <Select
+                value={effectiveAccountId}
+                onChange={(e) => {
+                  setAccountId(e.target.value);
+                  const selected = userOptions.find((u) => u.id === e.target.value);
+                  setAccountLabel(selected ? userLabel(selected) : e.target.value);
+                }}
+              >
+                <option value="">Select an account</option>
+                {accountId && !userOptions.some((u) => u.id === accountId) && (
+                  <option value={accountId}>{accountLabel}</option>
+                )}
+                {userOptions.map((u) => (
                   <option key={u.id} value={u.id}>
                     {userLabel(u)}
                   </option>
-                ))
-              )}
-            </Select>
+                ))}
+              </Select>
+              <PageControls
+                page={page}
+                nextCursor={users.data?.nextCursor}
+                busy={users.isFetching}
+              />
+              {users.isError && <p className="text-text-dim text-xs">Failed to load accounts.</p>}
+            </div>
           )}
         </div>
       </Card>

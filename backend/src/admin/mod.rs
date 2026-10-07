@@ -8,6 +8,7 @@ use crate::{cli::ServerConfig, database::Database};
 pub mod feature_flags;
 pub mod feedback;
 pub mod metadata;
+pub mod pagination;
 pub mod router;
 pub mod settings;
 pub mod static_assets;

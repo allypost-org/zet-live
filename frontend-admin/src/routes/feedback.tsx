@@ -1,7 +1,8 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { toast } from "sonner";
 
-import { Button, Card, CategoryBadge, Empty, Spinner, StatusBadge } from "@/components/ui";
+import { PageControls, usePageState } from "@/components/page-controls";
+import { Button, Card, Input, CategoryBadge, Empty, Spinner, StatusBadge } from "@/components/ui";
 import { type FeedbackFilter, feedbackFilterSchema } from "@/entity/schemas";
 import {
   useArchiveFeedback,
@@ -20,7 +21,8 @@ export function FeedbackRoute() {
   const search = useSearch({ strict: false });
   const filter = feedbackFilterSchema.catch("all").parse(search.handled ?? "all");
 
-  const { data, isLoading, isError, refetch } = useFeedback(filter);
+  const page = usePageState(filter);
+  const { data, isLoading, isError, isFetching, refetch } = useFeedback(filter, page.options);
   const archive = useArchiveFeedback();
   const reply = useReplyFeedback();
   const dismiss = useDismissFeedback();
@@ -99,15 +101,24 @@ export function FeedbackRoute() {
           </Button>
         </div>
 
-        <div className="flex flex-col gap-3">
+        <Input
+          placeholder="Search all feedback…"
+          value={page.options.search}
+          onChange={(e) => {
+            page.setSearch(e.target.value);
+          }}
+          className="mb-3 max-w-xs"
+        />
+        <PageControls page={page} nextCursor={data?.nextCursor} busy={isFetching} />
+        <div className="mt-3 flex flex-col gap-3">
           {isLoading ? (
             <Spinner />
           ) : isError ? (
             <Empty>Failed to load feedback</Empty>
-          ) : !data || data.length === 0 ? (
+          ) : !data || data.items.length === 0 ? (
             <Empty>No feedback yet</Empty>
           ) : (
-            data.map((f) => {
+            data.items.map((f) => {
               const archived = f.handled || f.dismissed;
               return (
                 <div

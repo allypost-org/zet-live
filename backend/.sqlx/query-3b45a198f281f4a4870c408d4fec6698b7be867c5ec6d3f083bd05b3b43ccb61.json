@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO live_trips (trip_id, trip_key)\n                     SELECT * FROM UNNEST($1::text[], $2::text[])",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3b45a198f281f4a4870c408d4fec6698b7be867c5ec6d3f083bd05b3b43ccb61"
+}

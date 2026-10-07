@@ -71,11 +71,17 @@ macro_rules! map_row {
     };
 }
 
-pub async fn list(filter: &FeedbackFilter) -> Result<Vec<FeedbackRow>, sqlx::Error> {
-    let rows = match filter.handled.as_deref() {
-        // "new" = open (not acknowledged, not dismissed, no reply)
-        Some("new") => sqlx::query!(
-            "
+pub async fn list(
+    filter: &FeedbackFilter,
+    page: &crate::admin::pagination::PageRequest,
+) -> Result<crate::admin::pagination::Page<FeedbackRow>, sqlx::Error> {
+    // CASE ordering needs a custom plan to use the selected ordering/filter index.
+    let mut tx = Database::pool().begin().await?;
+    sqlx::query("SET LOCAL plan_cache_mode = 'force_custom_plan'")
+        .execute(&mut *tx)
+        .await?;
+    let rows = sqlx::query!(
+        "
             SELECT
                   f.id            AS \"id!\"
                 , f.category      AS \"category!\"
@@ -97,82 +103,27 @@ pub async fn list(filter: &FeedbackFilter) -> Result<Vec<FeedbackRow>, sqlx::Err
                 , u.display_name  AS \"user_display_name\"
             FROM feedback f
             LEFT JOIN users u ON u.id = f.user_id
-            WHERE NOT f.handled AND NOT f.dismissed AND f.reply IS NULL
-            ORDER BY f.created_at DESC
-            "
-        )
-        .fetch_all(&Database::pool())
-        .await?
-        .into_iter()
-        .map(|r| map_row!(r))
-        .collect(),
-        // "archived" = closed (acknowledged OR dismissed OR replied)
-        Some("archived") => sqlx::query!(
-            "
-            SELECT
-                  f.id            AS \"id!\"
-                , f.category      AS \"category!\"
-                , f.message       AS \"message!\"
-                , f.name
-                , f.contact
-                , f.meta_url
-                , f.meta_ua
-                , f.meta_lang
-                , f.meta_build
-                , f.ip            AS \"ip!\"
-                , f.created_at    AS \"created_at!: time::OffsetDateTime\"
-                , f.handled       AS \"handled!\"
-                , f.dismissed     AS \"dismissed!\"
-                , f.reply
-                , f.replied_at   AS \"replied_at: time::OffsetDateTime\"
-                , f.user_id
-                , u.email         AS \"user_email\"
-                , u.display_name  AS \"user_display_name\"
-            FROM feedback f
-            LEFT JOIN users u ON u.id = f.user_id
-            WHERE f.handled OR f.dismissed OR f.reply IS NOT NULL
-            ORDER BY f.created_at DESC
-            "
-        )
-        .fetch_all(&Database::pool())
-        .await?
-        .into_iter()
-        .map(|r| map_row!(r))
-        .collect(),
-        _ => sqlx::query!(
-            "
-            SELECT
-                  f.id            AS \"id!\"
-                , f.category      AS \"category!\"
-                , f.message       AS \"message!\"
-                , f.name
-                , f.contact
-                , f.meta_url
-                , f.meta_ua
-                , f.meta_lang
-                , f.meta_build
-                , f.ip            AS \"ip!\"
-                , f.created_at    AS \"created_at!: time::OffsetDateTime\"
-                , f.handled       AS \"handled!\"
-                , f.dismissed     AS \"dismissed!\"
-                , f.reply
-                , f.replied_at   AS \"replied_at: time::OffsetDateTime\"
-                , f.user_id
-                , u.email         AS \"user_email\"
-                , u.display_name  AS \"user_display_name\"
-            FROM feedback f
-            LEFT JOIN users u ON u.id = f.user_id
-            ORDER BY f.created_at DESC
-            "
-        )
-        .fetch_all(&Database::pool())
-        .await?
-        .into_iter()
-        .map(|r| map_row!(r))
-        .collect(),
-    };
-
-    Ok(rows)
+            WHERE ($6 = 'all'
+                   OR ($6 = 'new' AND NOT f.handled AND NOT f.dismissed AND f.reply IS NULL)
+                   OR ($6 = 'archived' AND (f.handled OR f.dismissed OR f.reply IS NOT NULL)))
+              AND ($3 = '%%' OR concat_ws(' ', f.id, f.category, f.message, f.name, f.contact, \
+         f.ip, f.reply, u.email, u.display_name) ILIKE $3)
+            ORDER BY CASE WHEN $1 = 'createdAt' AND NOT $2 THEN f.created_at END ASC,
+                     CASE WHEN $1 = 'createdAt' AND $2 THEN f.created_at END DESC, f.id DESC
+            LIMIT $4 OFFSET $5
+            ",
+        page.sort.as_str(),
+        page.descending,
+        page.search,
+        page.fetch_limit(),
+        page.offset,
+        filter.handled.as_deref().unwrap_or("all"),
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let items = rows.into_iter().map(|r| map_row!(r)).collect();
+    Ok(crate::admin::pagination::Page::new(items, page))
 }
 
 pub async fn delete(id: i64) -> Result<bool, sqlx::Error> {

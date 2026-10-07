@@ -1,10 +1,21 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n              id\n            , display_name\n            , email\n            , avatar_url\n        FROM users\n        WHERE id = $1\n        ",
+  "query": "SELECT s.id AS session_id, u.id, u.display_name, u.email, u.avatar_url\n         FROM user_sessions s\n         JOIN users u ON u.id = s.user_id\n         WHERE s.token_hash = $1 AND s.expires_at > $2",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "session_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_sessions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
         "name": "id",
         "type_info": "Text",
         "origin": {
@@ -15,7 +26,7 @@
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "display_name",
         "type_info": "Text",
         "origin": {
@@ -26,7 +37,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "email",
         "type_info": "Text",
         "origin": {
@@ -37,7 +48,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "avatar_url",
         "type_info": "Text",
         "origin": {
@@ -50,15 +61,17 @@
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Bytea",
+        "Timestamptz"
       ]
     },
     "nullable": [
+      false,
       false,
       true,
       true,
       true
     ]
   },
-  "hash": "360380b1bbce889bfcb354693a67d785e8eb1282bf341d9cc26df0416299601d"
+  "hash": "1ae51a8fa8151b3a2179508d77c72daf3114e6e228fc31457837346f52ccc9a1"
 }

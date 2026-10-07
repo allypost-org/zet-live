@@ -72,7 +72,14 @@ pub async fn for_user(user_id: &str) -> Vec<GlobalNotice> {
 }
 
 /// All per-account notices with their target account (for the admin UI).
-pub async fn list_all() -> Vec<UserNoticeRow> {
+pub async fn list_all(
+    page: &crate::admin::pagination::PageRequest,
+) -> Result<crate::admin::pagination::Page<UserNoticeRow>, sqlx::Error> {
+    // CASE ordering needs a custom plan to use the selected ordering/filter index.
+    let mut tx = Database::pool().begin().await?;
+    sqlx::query("SET LOCAL plan_cache_mode = 'force_custom_plan'")
+        .execute(&mut *tx)
+        .await?;
     let rows = sqlx::query!(
         "
         SELECT n.id              AS \"id!: String\",
@@ -84,14 +91,33 @@ pub async fn list_all() -> Vec<UserNoticeRow> {
                n.created_at      AS \"created_at!: time::OffsetDateTime\"
         FROM user_notices n
         LEFT JOIN users u ON u.id = n.user_id
-        ORDER BY n.created_at DESC
-        "
+        WHERE ($3 = '%%' OR concat_ws(' ', u.display_name, u.email, n.user_id, n.text, n.severity) \
+         ILIKE $3)
+        ORDER BY CASE WHEN $1 = 'createdAt' AND NOT $2 THEN n.created_at END ASC,
+                     CASE WHEN $1 = 'createdAt' AND $2 THEN n.created_at END DESC,
+                     CASE WHEN $1 = 'user' AND NOT $2 THEN COALESCE(u.display_name, u.email, u.id) \
+         END ASC NULLS LAST,
+                     CASE WHEN $1 = 'user' AND $2 THEN COALESCE(u.display_name, u.email, u.id) END \
+         DESC NULLS LAST,
+                     CASE WHEN $1 = 'text' AND NOT $2 THEN n.text END ASC NULLS LAST,
+                     CASE WHEN $1 = 'text' AND $2 THEN n.text END DESC NULLS LAST,
+                     CASE WHEN $1 = 'severity' AND NOT $2 THEN n.severity END ASC NULLS LAST,
+                     CASE WHEN $1 = 'severity' AND $2 THEN n.severity END DESC NULLS LAST, n.id \
+         DESC
+        LIMIT $4 OFFSET $5
+        ",
+        page.sort.as_str(),
+        page.descending,
+        page.search,
+        page.fetch_limit(),
+        page.offset,
     )
-    .fetch_all(&Database::pool())
-    .await
-    .unwrap_or_default();
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
 
-    rows.into_iter()
+    let items = rows
+        .into_iter()
         .map(|r| UserNoticeRow {
             id: r.id,
             user_id: r.user_id,
@@ -101,7 +127,8 @@ pub async fn list_all() -> Vec<UserNoticeRow> {
             severity: parse_severity(&r.severity),
             created_at: crate::database::time::to_jiff(r.created_at),
         })
-        .collect()
+        .collect();
+    Ok(crate::admin::pagination::Page::new(items, page))
 }
 
 /// Create a per-account notice. Returns the created notice.

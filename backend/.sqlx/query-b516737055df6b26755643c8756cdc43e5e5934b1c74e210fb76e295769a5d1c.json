@@ -1,0 +1,116 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n              s.id\n            , s.user_id\n            , s.created_at AS \"created_at!: time::OffsetDateTime\"\n            , s.expires_at AS \"expires_at!: time::OffsetDateTime\"\n            , s.ip\n            , s.user_agent\n            , u.display_name\n            , u.email\n        FROM user_sessions s\n        JOIN users u ON u.id = s.user_id\n        WHERE ($3 = '%%' OR concat_ws(' ', u.display_name, u.email, u.id, s.ip, s.user_agent) ILIKE $3)\n        ORDER BY CASE WHEN $1 = 'createdAt' AND NOT $2 THEN s.created_at END ASC,\n                     CASE WHEN $1 = 'createdAt' AND $2 THEN s.created_at END DESC,\n                     CASE WHEN $1 = 'user' AND NOT $2 THEN COALESCE(u.display_name, u.email, u.id) END ASC NULLS LAST,\n                     CASE WHEN $1 = 'user' AND $2 THEN COALESCE(u.display_name, u.email, u.id) END DESC NULLS LAST,\n                     CASE WHEN $1 = 'ip' AND NOT $2 THEN s.ip END ASC NULLS LAST,\n                     CASE WHEN $1 = 'ip' AND $2 THEN s.ip END DESC NULLS LAST,\n                     CASE WHEN $1 = 'userAgent' AND NOT $2 THEN s.user_agent END ASC NULLS LAST,\n                     CASE WHEN $1 = 'userAgent' AND $2 THEN s.user_agent END DESC NULLS LAST,\n                     CASE WHEN $1 = 'expiresAt' AND NOT $2 THEN s.expires_at END ASC NULLS LAST,\n                     CASE WHEN $1 = 'expiresAt' AND $2 THEN s.expires_at END DESC NULLS LAST, s.id DESC\n        LIMIT $4 OFFSET $5\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_sessions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_sessions",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "created_at!: time::OffsetDateTime",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_sessions",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "expires_at!: time::OffsetDateTime",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_sessions",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "ip",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_sessions",
+            "name": "ip"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "user_agent",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_sessions",
+            "name": "user_agent"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "email"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "b516737055df6b26755643c8756cdc43e5e5934b1c74e210fb76e295769a5d1c"
+}

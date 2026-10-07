@@ -3,10 +3,11 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
+import { usePageState } from "@/components/page-controls";
 import { DataTable } from "@/components/data-table";
 import { ProviderForm } from "@/components/provider-form";
 import { Badge, Button, Card, Empty, Row, SectionTitle, Spinner, Toggle } from "@/components/ui";
-import { type AuthProvider, type SessionInfo, type UserSummary } from "@/entity/schemas";
+import { type AuthProvider, type AdminSessionInfo, type UserSummary } from "@/entity/schemas";
 import {
   useAuthProviders,
   useCreateAuthProvider,
@@ -16,7 +17,7 @@ import {
   useUpdateAuthProvider,
   useUsers,
 } from "@/lib/queries";
-import { confirmAction, promptText, userLabel } from "@/lib/utils";
+import { confirmAction, promptText } from "@/lib/utils";
 
 function ProvidersSection() {
   const { data, isLoading, isError } = useAuthProviders();
@@ -116,11 +117,13 @@ function ProvidersSection() {
 
 function UsersTab() {
   const navigate = useNavigate();
-  const { data, isLoading, isError } = useUsers();
+  const page = usePageState();
+  const { data, isLoading, isError, isFetching } = useUsers(page.options);
 
   const columns: ColumnDef<UserSummary>[] = [
     {
       header: "Name",
+      id: "displayName",
       accessorFn: (u) => u.displayName ?? "",
       cell: ({ row }) => (
         <span className="font-medium text-[#cbd5e1]">{row.original.displayName || "—"}</span>
@@ -128,11 +131,13 @@ function UsersTab() {
     },
     {
       header: "Email",
+      id: "email",
       accessorFn: (u) => u.email ?? "",
       cell: ({ row }) => <span className="text-text-muted">{row.original.email || "—"}</span>,
     },
     {
       header: "Providers",
+      id: "providers",
       accessorFn: (u) => u.providers.length,
       enableGlobalFilter: false,
       cell: ({ row }) =>
@@ -168,7 +173,8 @@ function UsersTab() {
   return (
     <DataTable
       columns={columns}
-      data={data ?? []}
+      data={data?.items ?? []}
+      serverPage={{ page, nextCursor: data?.nextCursor, busy: isFetching }}
       searchAccessor={(u) => `${u.displayName ?? ""} ${u.email ?? ""} ${u.providers.join(" ")}`}
       searchPlaceholder="Search by name, email, provider…"
       onRowClick={(u) => {
@@ -181,11 +187,9 @@ function UsersTab() {
 
 function SessionsTab() {
   const navigate = useNavigate();
-  const { data: users } = useUsers();
-  const { data, isLoading, isError } = useSessions();
+  const page = usePageState();
+  const { data, isLoading, isError, isFetching } = useSessions(page.options);
   const revoke = useDeleteSession();
-
-  const userMap = new Map((users ?? []).map((u) => [u.id, u] as const));
 
   async function handleRevoke(id: string) {
     if (!confirmAction("Revoke this session? The user will be logged out.")) return;
@@ -197,17 +201,15 @@ function SessionsTab() {
     }
   }
 
-  const columns: ColumnDef<SessionInfo>[] = [
+  const columns: ColumnDef<AdminSessionInfo>[] = [
     {
       header: "User",
-      accessorFn: (s) => {
-        const u = userMap.get(s.userId);
-        return u ? userLabel(u) : s.userId.slice(0, 8);
-      },
+      id: "user",
+      accessorFn: (s) => s.userDisplayName || s.userEmail || s.userId.slice(0, 8),
       cell: ({ row }) => {
-        const u = userMap.get(row.original.userId);
-        const label = u ? userLabel(u) : row.original.userId.slice(0, 8);
-        return u ? (
+        const label =
+          row.original.userDisplayName || row.original.userEmail || row.original.userId.slice(0, 8);
+        return (
           <button
             type="button"
             className="text-primary text-left font-medium hover:underline"
@@ -218,13 +220,12 @@ function SessionsTab() {
           >
             {label}
           </button>
-        ) : (
-          <span className="text-text-dim">{label}</span>
         );
       },
     },
     {
       header: "IP",
+      id: "ip",
       accessorFn: (s) => s.ip ?? "",
       cell: ({ row }) => (
         <span className="text-text-muted font-mono text-xs">{row.original.ip || "—"}</span>
@@ -232,6 +233,7 @@ function SessionsTab() {
     },
     {
       header: "User agent",
+      id: "userAgent",
       accessorFn: (s) => s.userAgent ?? "",
       enableGlobalFilter: false,
       cell: ({ row }) => (
@@ -283,11 +285,8 @@ function SessionsTab() {
   return (
     <DataTable
       columns={columns}
-      data={data ?? []}
-      searchAccessor={(s) => {
-        const u = userMap.get(s.userId);
-        return `${u ? userLabel(u) : ""} ${s.ip ?? ""} ${s.userAgent ?? ""}`;
-      }}
+      data={data?.items ?? []}
+      serverPage={{ page, nextCursor: data?.nextCursor, busy: isFetching }}
       searchPlaceholder="Search sessions…"
       emptyMessage={isError ? "Failed to load sessions." : isLoading ? "Loading…" : "No sessions."}
     />

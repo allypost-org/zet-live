@@ -1,15 +1,15 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                        SELECT DISTINCT\n                            s.stop_id, s.stop_name, s.longitude, s.latitude\n                        FROM live_trips lt\n                        INNER JOIN gtfs_stop_times st on st.trip_key = lt.trip_key\n                        INNER JOIN gtfs_stops s on s.stop_id = st.stop_id\n                        ",
+  "query": "SELECT ids.stop_id AS \"stop_id!\", s.stop_name, s.longitude, s.latitude\n                         FROM (\n                             SELECT DISTINCT st.stop_id\n                             FROM live_trips lt\n                             JOIN gtfs_stop_times st ON st.trip_key = lt.trip_key\n                         ) ids\n                         LEFT JOIN gtfs_stops s ON s.stop_id = ids.stop_id\n                         ORDER BY ids.stop_id",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "stop_id",
+        "name": "stop_id!",
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "gtfs_stops",
+            "table": "gtfs_stop_times",
             "name": "stop_id"
           }
         }
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "f31d68d4a148d3af37945d73508c5c306939d14b0517e8e6bc342ba6847ce03c"
+  "hash": "0437cdb5155d04619dd30ea699fadac4cbf8a0cff648c9d71c8cd555f92e4913"
 }

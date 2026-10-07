@@ -131,6 +131,33 @@ pub async fn lookup_session(token: &str) -> Result<Option<SessionRow>, sqlx::Err
     }))
 }
 
+pub async fn lookup_user(token: &str) -> Result<Option<super::ResolvedUser>, sqlx::Error> {
+    let Some(raw) = decode_token(token) else {
+        return Ok(None);
+    };
+    let hash = sha256(&raw);
+    let now = now_db();
+    let row = sqlx::query!(
+        "SELECT s.id AS session_id, u.id, u.display_name, u.email, u.avatar_url
+         FROM user_sessions s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.token_hash = $1 AND s.expires_at > $2",
+        hash,
+        now,
+    )
+    .fetch_optional(&Database::pool())
+    .await?;
+    Ok(row.map(|row| super::ResolvedUser {
+        session_id: row.session_id,
+        user: super::User {
+            id: row.id,
+            display_name: row.display_name,
+            email: row.email,
+            avatar_url: row.avatar_url,
+        },
+    }))
+}
+
 pub async fn delete_session(token: &str) -> Result<bool, sqlx::Error> {
     let Some(raw) = decode_token(token) else {
         return Ok(false);
@@ -187,34 +214,79 @@ pub async fn list_sessions_for_user(user_id: &str) -> Result<Vec<SessionInfo>, s
         .collect())
 }
 
-pub async fn list_all_sessions() -> Result<Vec<SessionInfo>, sqlx::Error> {
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminSessionInfo {
+    #[serde(flatten)]
+    pub session: SessionInfo,
+    pub user_display_name: Option<String>,
+    pub user_email: Option<String>,
+}
+
+pub async fn list_all_sessions(
+    page: &crate::admin::pagination::PageRequest,
+) -> Result<crate::admin::pagination::Page<AdminSessionInfo>, sqlx::Error> {
+    // CASE ordering needs a custom plan to use the selected ordering/filter index.
+    let mut tx = Database::pool().begin().await?;
+    sqlx::query("SET LOCAL plan_cache_mode = 'force_custom_plan'")
+        .execute(&mut *tx)
+        .await?;
     let rows = sqlx::query!(
         "
         SELECT
-              id
-            , user_id
-            , created_at AS \"created_at!: time::OffsetDateTime\"
-            , expires_at AS \"expires_at!: time::OffsetDateTime\"
-            , ip
-            , user_agent
-        FROM user_sessions
-        ORDER BY created_at DESC
-        "
+              s.id
+            , s.user_id
+            , s.created_at AS \"created_at!: time::OffsetDateTime\"
+            , s.expires_at AS \"expires_at!: time::OffsetDateTime\"
+            , s.ip
+            , s.user_agent
+            , u.display_name
+            , u.email
+        FROM user_sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE ($3 = '%%' OR concat_ws(' ', u.display_name, u.email, u.id, s.ip, s.user_agent) \
+         ILIKE $3)
+        ORDER BY CASE WHEN $1 = 'createdAt' AND NOT $2 THEN s.created_at END ASC,
+                     CASE WHEN $1 = 'createdAt' AND $2 THEN s.created_at END DESC,
+                     CASE WHEN $1 = 'user' AND NOT $2 THEN COALESCE(u.display_name, u.email, u.id) \
+         END ASC NULLS LAST,
+                     CASE WHEN $1 = 'user' AND $2 THEN COALESCE(u.display_name, u.email, u.id) END \
+         DESC NULLS LAST,
+                     CASE WHEN $1 = 'ip' AND NOT $2 THEN s.ip END ASC NULLS LAST,
+                     CASE WHEN $1 = 'ip' AND $2 THEN s.ip END DESC NULLS LAST,
+                     CASE WHEN $1 = 'userAgent' AND NOT $2 THEN s.user_agent END ASC NULLS LAST,
+                     CASE WHEN $1 = 'userAgent' AND $2 THEN s.user_agent END DESC NULLS LAST,
+                     CASE WHEN $1 = 'expiresAt' AND NOT $2 THEN s.expires_at END ASC NULLS LAST,
+                     CASE WHEN $1 = 'expiresAt' AND $2 THEN s.expires_at END DESC NULLS LAST, s.id \
+         DESC
+        LIMIT $4 OFFSET $5
+        ",
+        page.sort.as_str(),
+        page.descending,
+        page.search,
+        page.fetch_limit(),
+        page.offset,
     )
-    .fetch_all(&Database::pool())
+    .fetch_all(&mut *tx)
     .await?;
+    tx.commit().await?;
 
-    Ok(rows
+    let items = rows
         .into_iter()
-        .map(|r| SessionInfo {
-            id: r.id,
-            user_id: r.user_id,
-            created_at: crate::database::time::to_jiff(r.created_at),
-            expires_at: crate::database::time::to_jiff(r.expires_at),
-            ip: r.ip,
-            user_agent: r.user_agent,
+        .map(|r| AdminSessionInfo {
+            user_display_name: r.display_name,
+            user_email: r.email,
+            session: SessionInfo {
+                id: r.id,
+                user_id: r.user_id,
+                created_at: crate::database::time::to_jiff(r.created_at),
+                expires_at: crate::database::time::to_jiff(r.expires_at),
+                ip: r.ip,
+                user_agent: r.user_agent,
+            },
         })
-        .collect())
+        .collect();
+    Ok(crate::admin::pagination::Page::new(items, page))
 }
 
 pub async fn delete_session_by_id(id: &str) -> Result<Option<String>, sqlx::Error> {

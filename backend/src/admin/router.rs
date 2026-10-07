@@ -12,7 +12,7 @@ use serde::Deserialize;
 use tracing::{debug, warn};
 
 use crate::{
-    admin::{self, feedback::FeedbackFilter},
+    admin::{self, feedback::FeedbackFilter, pagination::PageQuery},
     server::routes::v1::{
         admin_notifications::{ToastPayload, send_notification},
         ws::WS_CONNECTIONS,
@@ -167,8 +167,24 @@ async fn send_notify(axum::Json(payload): axum::Json<ToastPayload>) -> impl Into
     StatusCode::ACCEPTED.into_response()
 }
 
-async fn list_feedback(Query(filter): Query<FeedbackFilter>) -> impl IntoResponse {
-    match admin::feedback::list(&filter).await {
+async fn list_feedback(
+    Query(filter): Query<FeedbackFilter>,
+    Query(page): Query<PageQuery>,
+) -> impl IntoResponse {
+    let page = match page.validate() {
+        Ok(page) => page,
+        Err(error) => return (StatusCode::BAD_REQUEST, error).into_response(),
+    };
+    if let Err(error) = page.validate_sort(&["createdAt"]) {
+        return (StatusCode::BAD_REQUEST, error).into_response();
+    }
+    if !matches!(
+        filter.handled.as_deref(),
+        None | Some("all" | "new" | "archived")
+    ) {
+        return (StatusCode::BAD_REQUEST, "Invalid feedback filter").into_response();
+    }
+    match admin::feedback::list(&filter, &page).await {
         Ok(rows) => axum::Json(rows).into_response(),
         Err(e) => {
             warn!(error = %e, "Failed to list feedback");
@@ -452,9 +468,22 @@ async fn delete_auth_provider(Path(id): Path<String>) -> Response {
 
 // --- Users + per-account notices ---
 
-/// `GET /api/users` -> all accounts (id, name, email, linked providers).
-async fn list_users() -> impl IntoResponse {
-    match crate::auth::accounts::list_users().await {
+/// `GET /api/users` -> a page of accounts (id, name, email, linked providers).
+async fn list_users(Query(page): Query<PageQuery>) -> impl IntoResponse {
+    let page = match page.validate() {
+        Ok(page) => page,
+        Err(error) => return (StatusCode::BAD_REQUEST, error).into_response(),
+    };
+    if let Err(error) = page.validate_sort(&[
+        "createdAt",
+        "displayName",
+        "email",
+        "providers",
+        "noticeCount",
+    ]) {
+        return (StatusCode::BAD_REQUEST, error).into_response();
+    }
+    match crate::auth::accounts::list_users(&page).await {
         Ok(users) => axum::Json(users).into_response(),
         Err(e) => {
             warn!(error = %e, "Failed to list users");
@@ -575,9 +604,16 @@ async fn revoke_user_sessions(Path(id): Path<String>) -> Response {
     }
 }
 
-/// `GET /api/sessions` -> all sessions across all users.
-async fn list_sessions() -> impl IntoResponse {
-    match crate::auth::session::list_all_sessions().await {
+/// `GET /api/sessions` -> a page of sessions across all users.
+async fn list_sessions(Query(page): Query<PageQuery>) -> impl IntoResponse {
+    let page = match page.validate() {
+        Ok(page) => page,
+        Err(error) => return (StatusCode::BAD_REQUEST, error).into_response(),
+    };
+    if let Err(error) = page.validate_sort(&["createdAt", "user", "ip", "userAgent", "expiresAt"]) {
+        return (StatusCode::BAD_REQUEST, error).into_response();
+    }
+    match crate::auth::session::list_all_sessions(&page).await {
         Ok(sessions) => axum::Json(sessions).into_response(),
         Err(e) => {
             warn!(error = %e, "Failed to list sessions");
@@ -603,8 +639,21 @@ async fn delete_session(Path(id): Path<String>) -> Response {
 }
 
 /// `GET /api/user-notices` -> all per-account notices (with target account).
-async fn list_user_notices() -> impl IntoResponse {
-    axum::Json(crate::admin::user_notices::list_all().await).into_response()
+async fn list_user_notices(Query(page): Query<PageQuery>) -> impl IntoResponse {
+    let page = match page.validate() {
+        Ok(page) => page,
+        Err(error) => return (StatusCode::BAD_REQUEST, error).into_response(),
+    };
+    if let Err(error) = page.validate_sort(&["createdAt", "user", "text", "severity"]) {
+        return (StatusCode::BAD_REQUEST, error).into_response();
+    }
+    match crate::admin::user_notices::list_all(&page).await {
+        Ok(rows) => axum::Json(rows).into_response(),
+        Err(error) => {
+            warn!(%error, "Failed to list user notices");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

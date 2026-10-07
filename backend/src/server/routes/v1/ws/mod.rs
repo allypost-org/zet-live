@@ -15,7 +15,10 @@ use axum::{
 };
 use axum_client_ip::ClientIp;
 use futures::{SinkExt, StreamExt};
-use tokio::{sync::RwLock, time};
+use tokio::{
+    sync::{RwLock, broadcast},
+    time,
+};
 use tracing::{debug, error, trace, warn};
 
 use super::{
@@ -124,9 +127,14 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
     let mut user_id = None;
     let mut session_id = None;
     let mut flag_rx = state.flag_changes.subscribe();
+    // Subscribe before the initial snapshot. A receiver only sees transmissions
+    // published after it subscribes, so subscribing later would lose anything
+    // sent while the snapshot frames were being written. Those later frames can
+    // repeat a snapshot entry, which is harmless because every kind replaces
+    // the client's whole state.
+    let mut transmission_rx = state.get_transmission_receiver();
 
-    if let Err(e) = send_initial_state(&mut sender).await {
-        error!(?e, "Error sending initial state");
+    if !send_full_state(None, &mut sender).await {
         cleanup_connection(addr).await;
         return;
     }
@@ -140,7 +148,6 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
         let interval = (30_000 + rand::random_range(-5_000_i64..5_000)) as u64;
         time::interval(Duration::from_millis(interval))
     };
-    let mut transmission_rx = state.get_transmission_receiver();
     let mut notification_rx = get_admin_notification_receiver();
 
     loop {
@@ -164,9 +171,17 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
                     break;
                 }
             }
-            result = state.wait_for_transmission(&mut transmission_rx) => {
+            result = transmission_rx.recv() => {
                 let transmission = match result {
                     Ok(t) => t,
+                    Err(broadcast::error::RecvError::Lagged(count)) => {
+                        warn!(count, "Transmission channel lagged, resending full state");
+                        drain_transmissions(&mut transmission_rx);
+                        if !send_full_state(user_id.as_deref(), &mut sender).await {
+                            break;
+                        }
+                        continue;
+                    }
                     Err(e) => {
                         warn!(?e, "Error waiting for transmission");
                         break;
@@ -265,8 +280,18 @@ async fn handle_transmission(
                 .await
                 .is_ok()
         }
-        Transmission::Empty => true,
     }
+}
+
+/// Discard the transmissions queued for a lagging connection, before the caller
+/// resends the full snapshot. Every broadcast replaces its `INITIAL_STATE` entry
+/// before it is published, so a transmission queued before the snapshot is read
+/// is already reflected in it. Draining first therefore never drops a newer
+/// value, and keeps an older frame from arriving after the snapshot and moving
+/// the client backwards. A producer that outruns the drain stops it early by
+/// lagging again, which the next receive detects and recovers from.
+fn drain_transmissions(rx: &mut broadcast::Receiver<Arc<Transmission>>) {
+    while rx.try_recv().is_ok() {}
 }
 
 async fn send_feature_flags(
@@ -351,72 +376,40 @@ async fn handle_client_text(
     }
 }
 
-async fn send_initial_state(
+/// Push every current snapshot entry plus the account's notices, replacing
+/// whatever the client already holds. Used when a connection opens and to
+/// recover one that lagged behind and missed transmissions.
+async fn send_full_state(
+    user_id: Option<&str>,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
-) -> Result<(), axum::Error> {
-    {
-        let vehicles = INITIAL_STATE.vehicles().await.clone();
+) -> bool {
+    let snapshots = [
+        INITIAL_STATE.vehicles().await.clone(),
+        INITIAL_STATE.active_stops().await.clone(),
+        INITIAL_STATE.notices().await.clone(),
+        INITIAL_STATE.gbfs_stations().await.clone(),
+        INITIAL_STATE.simple_stops().await.clone(),
+    ];
 
-        if !vehicles.is_empty() {
-            let res = sender.send(Message::Binary(vehicles)).await;
+    for snapshot in snapshots {
+        if snapshot.is_empty() {
+            continue;
+        }
 
-            if let Err(e) = res {
-                error!(?e, "Error sending initial vehicles");
-                return Err(e);
-            }
+        if sender.send(Message::Binary(snapshot)).await.is_err() {
+            error!("Error sending full state");
+            return false;
         }
     }
 
+    if let Some(user_id) = user_id
+        && send_user_notices(sender, user_id).await.is_err()
     {
-        let active_stops = INITIAL_STATE.active_stops().await.clone();
-
-        if !active_stops.is_empty() {
-            let res = sender.send(Message::Binary(active_stops)).await;
-
-            if let Err(e) = res {
-                error!(?e, "Error sending initial active stops");
-                return Err(e);
-            }
-        }
+        error!(%user_id, "Error sending user notices with full state");
+        return false;
     }
 
-    {
-        let notices = INITIAL_STATE.notices().await.clone();
-        if !notices.is_empty() {
-            let res = sender.send(Message::Binary(notices)).await;
-
-            if let Err(e) = res {
-                error!(?e, "Error sending initial notices");
-                return Err(e);
-            }
-        }
-    }
-
-    {
-        let gbfs_stations = INITIAL_STATE.gbfs_stations().await.clone();
-        if !gbfs_stations.is_empty() {
-            let res = sender.send(Message::Binary(gbfs_stations)).await;
-
-            if let Err(e) = res {
-                error!(?e, "Error sending initial GBFS stations");
-                return Err(e);
-            }
-        }
-    }
-
-    {
-        let simple_stops = INITIAL_STATE.simple_stops().await.clone();
-        if !simple_stops.is_empty() {
-            let res = sender.send(Message::Binary(simple_stops)).await;
-
-            if let Err(e) = res {
-                error!(?e, "Error sending initial simple stops");
-                return Err(e);
-            }
-        }
-    }
-
-    Ok(())
+    true
 }
 
 async fn send_user_notices(

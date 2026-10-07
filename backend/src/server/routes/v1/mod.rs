@@ -15,19 +15,17 @@ use axum::{
     extract::DefaultBodyLimit,
     routing::{delete, get, post},
 };
-use tokio::sync::{RwLock, watch};
-use tracing::{error, trace, warn};
+use tokio::sync::{RwLock, broadcast, watch};
+use tracing::{error, trace};
 
+use self::snapshot::LiveStopTimeInfo;
 use crate::{
     admin::settings::GlobalNotice,
     database::Database,
     entity::util::{mixed_value::MixedValue, versioned::Versioned},
     proto::{
         gbfs::fetcher::wait_for_gbfs_update,
-        gtfs_realtime::{
-            data::transit_realtime::FeedMessage,
-            fetcher::{get_cached_feed, wait_for_feed_update},
-        },
+        gtfs_realtime::{data::transit_realtime::FeedMessage, fetcher::subscribe_feed},
         gtfs_schedule::data::trip_key,
     },
 };
@@ -42,6 +40,7 @@ mod feedback;
 mod gbfs;
 mod schedule;
 mod settings;
+mod snapshot;
 mod vehicles;
 pub mod ws;
 
@@ -191,13 +190,9 @@ pub async fn broadcast_notices(notices: &[GlobalNotice]) {
 
     let bytes = Bytes::from(bytes);
 
-    INITIAL_STATE
-        .update_notices(if notices.is_empty() {
-            Bytes::new()
-        } else {
-            bytes.clone()
-        })
-        .await;
+    // Stored even when empty: an emptied notice list is a real state that a
+    // connection recovering from lag has to be told about.
+    INITIAL_STATE.update_notices(bytes.clone()).await;
 
     if let Some(state) = V1_APP_STATE.get() {
         state.send_transmission(Transmission::BroadcastToAll(bytes));
@@ -212,13 +207,16 @@ pub fn broadcast_feature_flags_changed() {
 }
 
 async fn feed_listener(app_state: Arc<V1AppState>) {
-    if let Some(feed) = get_cached_feed().await {
-        process_feed(app_state.clone(), feed);
-    }
+    let mut feeds = subscribe_feed();
+    let mut active_stops_cache = None;
     loop {
-        let feed = wait_for_feed_update().await;
-        trace!(?feed.header, "Got feed update on v1 router");
-        process_feed(app_state.clone(), feed);
+        let feed = feeds.borrow_and_update().clone();
+        if let Some(feed) = feed {
+            process_feed(app_state.clone(), feed, &mut active_stops_cache).await;
+        }
+        if feeds.changed().await.is_err() {
+            return;
+        }
     }
 }
 
@@ -277,8 +275,9 @@ async fn broadcast_gbfs_snapshot(app_state: &Arc<V1AppState>) {
 
 async fn broadcast_simple_stops(app_state: &Arc<V1AppState>, stops: Vec<Vec<MixedValue>>) {
     let now = now_millis();
-    if now.wrapping_sub(LAST_SIMPLE_STOPS_BROADCAST_MS.load(Ordering::Relaxed))
-        < STOP_BROADCAST_INTERVAL_MS
+    if !stops.is_empty()
+        && now.wrapping_sub(LAST_SIMPLE_STOPS_BROADCAST_MS.load(Ordering::Relaxed))
+            < STOP_BROADCAST_INTERVAL_MS
     {
         return;
     }
@@ -311,8 +310,9 @@ async fn broadcast_simple_stops(app_state: &Arc<V1AppState>, stops: Vec<Vec<Mixe
 
 async fn broadcast_active_stops(app_state: &Arc<V1AppState>, mut active_stop_ids: Vec<String>) {
     let now = now_millis();
-    if now.wrapping_sub(LAST_ACTIVE_STOPS_BROADCAST_MS.load(Ordering::Relaxed))
-        < STOP_BROADCAST_INTERVAL_MS
+    if !active_stop_ids.is_empty()
+        && now.wrapping_sub(LAST_ACTIVE_STOPS_BROADCAST_MS.load(Ordering::Relaxed))
+            < STOP_BROADCAST_INTERVAL_MS
     {
         return;
     }
@@ -400,11 +400,22 @@ fn now_millis() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
+struct ActiveStopsCache {
+    trip_keys: HashSet<String>,
+    schedule_generation: u64,
+    ids: Vec<String>,
+    simple: Vec<Vec<MixedValue>>,
+}
+
 #[allow(clippy::too_many_lines)]
-fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
+async fn process_feed(
+    app_state: Arc<V1AppState>,
+    feed: Arc<FeedMessage>,
+    active_stops_cache: &mut Option<ActiveStopsCache>,
+) {
     let active_stops_feed = feed.clone();
     let active_stops_app_state = app_state.clone();
-    tokio::task::spawn(async move {
+    let active_stops_task = async {
         let active_stops = {
             let start = Instant::now();
             let current_feed_trip_ids = active_stops_feed
@@ -414,11 +425,6 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 .filter_map(|x| x.trip.as_ref())
                 .map(|x| x.trip_id().to_string())
                 .collect::<HashSet<_>>();
-
-            if current_feed_trip_ids.is_empty() {
-                warn!(?active_stops_feed, "Got empty active trips");
-                return;
-            }
 
             trace!(current_feed_trips = ?current_feed_trip_ids.len(), "Updating active trips");
             let stmts_start = Instant::now();
@@ -443,19 +449,19 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     return;
                 }
 
-                for trip_id in &current_feed_trip_ids {
-                    let key = trip_key(trip_id);
-                    if let Err(e) = sqlx::query!(
-                        "INSERT INTO live_trips (trip_id, trip_key) VALUES ($1, $2)",
-                        trip_id,
-                        key
-                    )
-                    .execute(&mut *tx)
-                    .await
-                    {
-                        error!(?e, "Failed to insert live trip");
-                        return;
-                    }
+                let trip_ids = current_feed_trip_ids.iter().cloned().collect::<Vec<_>>();
+                let trip_keys = trip_ids.iter().map(|id| trip_key(id)).collect::<Vec<_>>();
+                if let Err(e) = sqlx::query!(
+                    "INSERT INTO live_trips (trip_id, trip_key)
+                     SELECT * FROM UNNEST($1::text[], $2::text[])",
+                    &trip_ids,
+                    &trip_keys,
+                )
+                .execute(&mut *tx)
+                .await
+                {
+                    error!(?e, "Failed to insert live trips");
+                    return;
                 }
 
                 if let Err(e) = tx.commit().await {
@@ -464,96 +470,71 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 }
             }
 
-            {
+            let trip_keys = current_feed_trip_ids
+                .iter()
+                .map(|id| trip_key(id))
+                .collect::<HashSet<_>>();
+            let schedule_generation = crate::proto::gtfs_schedule::data::generation();
+            let unchanged = active_stops_cache.as_ref().is_some_and(|cache| {
+                cache.trip_keys == trip_keys && cache.schedule_generation == schedule_generation
+            });
+            if !unchanged {
                 let stops = Database::logged(
-                    "active_stops_simple",
+                    "active_stops",
                     sqlx::query!(
-                        "
-                        SELECT DISTINCT
-                            s.stop_id, s.stop_name, s.longitude, s.latitude
-                        FROM live_trips lt
-                        INNER JOIN gtfs_stop_times st on st.trip_key = lt.trip_key
-                        INNER JOIN gtfs_stops s on s.stop_id = st.stop_id
-                        ",
+                        "SELECT ids.stop_id AS \"stop_id!\", s.stop_name, s.longitude, s.latitude
+                         FROM (
+                             SELECT DISTINCT st.stop_id
+                             FROM live_trips lt
+                             JOIN gtfs_stop_times st ON st.trip_key = lt.trip_key
+                         ) ids
+                         LEFT JOIN gtfs_stops s ON s.stop_id = ids.stop_id
+                         ORDER BY ids.stop_id"
                     )
                     .fetch_all(&Database::pool()),
                 )
                 .await;
-
-                match stops {
-                    Ok(mut stops) => {
-                        stops.sort_by(|a, b| a.stop_id.cmp(&b.stop_id));
-                        let stops = stops
-                            .into_iter()
-                            .filter_map(|x| {
-                                Some(vec![
-                                    x.stop_id.into(),
-                                    x.stop_name?.into(),
-                                    x.latitude?.into(),
-                                    x.longitude?.into(),
-                                ])
-                            })
-                            .collect::<Vec<_>>();
-
-                        if stops.is_empty() {
-                            warn!(
-                                feed_trips = current_feed_trip_ids.len(),
-                                sample_trip_id = ?current_feed_trip_ids.iter().next(),
-                                "Active-stops query returned no rows; SimpleStops left empty",
-                            );
-                        } else {
-                            SIMPLE_STOPS.write().await.clone_from(&stops);
-                            broadcast_simple_stops(&active_stops_app_state, stops).await;
-                        }
-                    }
+                let stops = match stops {
+                    Ok(stops) => stops,
                     Err(e) => {
-                        error!(?e, "Failed to query simple stops for active trips");
-                    }
-                }
-            }
-
-            trace!(took = ?stmts_start.elapsed(), "Updated active trips");
-
-            let active_stop_ids: Vec<String> = {
-                let rows = Database::logged(
-                    "active_stop_ids",
-                    sqlx::query_scalar!(
-                        "
-                        SELECT DISTINCT
-                            gst.stop_id
-                        FROM live_trips lt
-                        LEFT JOIN gtfs_stop_times gst ON lt.trip_key = gst.trip_key
-                        WHERE gst.stop_id IS NOT NULL
-                        "
-                    )
-                    .fetch_all(&Database::pool()),
-                )
-                .await;
-
-                match rows {
-                    Ok(rows) => rows.into_iter().collect(),
-                    Err(e) => {
-                        error!(?e, "Error getting active stops");
+                        error!(?e, "Failed to query active stops");
                         return;
                     }
-                }
+                };
+                let ids = stops.iter().map(|stop| stop.stop_id.clone()).collect();
+                let simple = stops
+                    .into_iter()
+                    .filter_map(|stop| {
+                        Some(vec![
+                            stop.stop_id.into(),
+                            stop.stop_name?.into(),
+                            stop.latitude?.into(),
+                            stop.longitude?.into(),
+                        ])
+                    })
+                    .collect();
+                *active_stops_cache = Some(ActiveStopsCache {
+                    trip_keys,
+                    schedule_generation,
+                    ids,
+                    simple,
+                });
+            }
+            let Some(cache) = active_stops_cache.as_ref() else {
+                return;
             };
-
-            trace!(
-                took = ?start.elapsed(),
-                stops = ?active_stop_ids.len(),
-                "Got active stops"
-            );
-
-            active_stop_ids
+            SIMPLE_STOPS.write().await.clone_from(&cache.simple);
+            broadcast_simple_stops(&active_stops_app_state, cache.simple.clone()).await;
+            trace!(took = ?stmts_start.elapsed(), total = ?start.elapsed(), "Updated active trips");
+            cache.ids.clone()
         };
 
         broadcast_active_stops(&active_stops_app_state, active_stops).await;
-    });
+    };
 
     let vehicles_feed = feed;
     let vehicles_app_state = app_state;
-    tokio::task::spawn(async move {
+    let vehicles_task = async {
         struct NextStopInfo {
             stop_id: String,
             stop_sequence: u64,
@@ -561,22 +542,6 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             arrival_time: Option<i64>,
         }
 
-        struct LiveStopTimeInfo {
-            stop_id: String,
-            stop_sequence: u64,
-            arrival_time: Option<i64>,
-            arrival_delay: Option<i64>,
-        }
-
-        struct RouteLongNameRow {
-            route_id: String,
-            route_long_name: Option<String>,
-        }
-
-        struct TripHeadsignRow {
-            trip_key: String,
-            trip_headsign: Option<String>,
-        }
         let current_stop_sequences = vehicles_feed
             .entity
             .iter()
@@ -672,41 +637,6 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             })
             .collect::<Vec<_>>();
 
-        let route_long_names: HashMap<String, String> = {
-            let route_ids = vehicles
-                .iter()
-                .map(|v| v.route_id.clone())
-                .collect::<HashSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-
-            if route_ids.is_empty() {
-                HashMap::new()
-            } else {
-                let rows = Database::logged(
-                    "route_long_names",
-                    sqlx::query_as!(
-                        RouteLongNameRow,
-                        "
-                    SELECT
-                          route_id
-                        , NULLIF(route_long_name, '') AS route_long_name
-                    FROM gtfs_routes
-                    WHERE route_id = ANY($1)
-                    ",
-                        &route_ids,
-                    )
-                    .fetch_all(&Database::pool()),
-                )
-                .await
-                .unwrap_or_default();
-
-                rows.into_iter()
-                    .filter_map(|row| row.route_long_name.map(|name| (row.route_id, name)))
-                    .collect()
-            }
-        };
-
         trace!(current_vehicles = ?vehicles.len(), "Updating vehicles");
 
         let previous_positions = {
@@ -738,46 +668,15 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             }
         };
 
-        let trip_headsigns = {
-            let trip_keys = vehicles
-                .iter()
-                .map(|v| trip_key(&v.trip_id))
-                .collect::<HashSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-
-            if trip_keys.is_empty() {
-                HashMap::new()
-            } else {
-                let rows = Database::logged(
-                    "trip_headsigns",
-                    sqlx::query_as!(
-                        TripHeadsignRow,
-                        "
-                    SELECT
-                          trip_key AS \"trip_key!\"
-                        , NULLIF(trip_headsign, '') AS trip_headsign
-                    FROM gtfs_trips
-                    WHERE trip_key = ANY($1)
-                    ",
-                        &trip_keys,
-                    )
-                    .fetch_all(&Database::pool()),
-                )
-                .await
-                .unwrap_or_default();
-
-                rows.into_iter()
-                    .filter_map(|row| row.trip_headsign.map(|name| (row.trip_key, name)))
-                    .collect()
-            }
-        };
+        let metadata = crate::database::schedule_metadata::snapshot();
 
         let vehicles = vehicles
             .into_iter()
             .map(|mut v| {
-                v.route_long_name = route_long_names.get(&v.route_id).cloned();
-                v.trip_headsign = trip_headsigns.get(&trip_key(&v.trip_id)).cloned();
+                v.route_long_name = metadata.route_name(&v.route_id).map(str::to_owned);
+                v.trip_headsign = metadata
+                    .headsign(&v.trip_id, &trip_key(&v.trip_id))
+                    .map(str::to_owned);
                 if let Some((prev_lat, prev_lng, prev_bearing)) = previous_positions.get(&v.id) {
                     let dist = haversine_distance(*prev_lat, *prev_lng, v.latitude, v.longitude);
                     if dist < 5.0 {
@@ -843,131 +742,13 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 return;
             }
 
-            for vehicle in &vehicles {
-                let id = vehicle.id.as_str();
-                let route_id = vehicle.route_id.as_str();
-                let trip_id = vehicle.trip_id.as_str();
-                let trip_key = trip_key(trip_id);
-                let route_long_name = vehicle.route_long_name.as_deref();
-                let trip_headsign = vehicle.trip_headsign.as_deref();
-                let latitude = vehicle.latitude;
-                let longitude = vehicle.longitude;
-                let prev_latitude = vehicle.prev_latitude;
-                let prev_longitude = vehicle.prev_longitude;
-                let bearing = vehicle.bearing;
-                let next_stop_id = vehicle.next_stop_id.as_deref();
-                let next_stop_sequence = vehicle.next_stop_sequence.map(|v| {
-                    #[allow(clippy::cast_possible_truncation)]
-                    {
-                        v as i32
-                    }
-                });
-                #[allow(clippy::cast_possible_truncation)]
-                let next_stop_arrival_delay = vehicle.next_stop_arrival_delay.map(|v| v as i32);
-                #[allow(clippy::cast_possible_truncation)]
-                let next_stop_arrival_time = vehicle.next_stop_arrival_time.map(|v| v as i32);
-
-                let q = sqlx::query!(
-                    "
-                    INSERT INTO
-                    live_vehicles
-                        ( vehicle_id
-                        , route_id
-                        , trip_id
-                        , trip_key
-                        , route_long_name
-                        , trip_headsign
-                        , latitude
-                        , longitude
-                        , prev_latitude
-                        , prev_longitude
-                        , bearing
-                        , next_stop_id
-                        , next_stop_sequence
-                        , next_stop_arrival_delay
-                        , next_stop_arrival_time
-                        )
-                    VALUES
-                        ( $1
-                        , $2
-                        , $3
-                        , $4
-                        , $5
-                        , $6
-                        , $7
-                        , $8
-                        , $9
-                        , $10
-                        , $11
-                        , $12
-                        , $13
-                        , $14
-                        , $15
-                        )
-                    ",
-                    id,
-                    route_id,
-                    trip_id,
-                    trip_key,
-                    route_long_name,
-                    trip_headsign,
-                    latitude,
-                    longitude,
-                    prev_latitude,
-                    prev_longitude,
-                    bearing,
-                    next_stop_id,
-                    next_stop_sequence,
-                    next_stop_arrival_delay,
-                    next_stop_arrival_time,
-                );
-
-                if let Err(e) = q.execute(&mut *tx).await {
-                    error!(?e, "Failed to insert live vehicle");
-                    return;
-                }
+            if let Err(e) = snapshot::insert_vehicles(&mut tx, &vehicles).await {
+                error!(?e, "Failed to insert live vehicles");
+                return;
             }
-
-            for (trip_id, stop_times) in &all_stop_times {
-                for stu in stop_times {
-                    let stop_id: &str = stu.stop_id.as_str();
-                    #[allow(clippy::cast_possible_truncation)]
-                    let stop_sequence = stu.stop_sequence as i32;
-                    #[allow(clippy::cast_possible_truncation)]
-                    let arrival_time = stu.arrival_time.map(|v| v as i32);
-                    #[allow(clippy::cast_possible_truncation)]
-                    let arrival_delay = stu.arrival_delay.map(|v| v as i32);
-
-                    let q = sqlx::query!(
-                        "
-                        INSERT INTO
-                        live_trip_stop_times
-                            ( trip_id
-                            , stop_id
-                            , stop_sequence
-                            , arrival_time
-                            , arrival_delay
-                            )
-                        VALUES
-                            ( $1
-                            , $2
-                            , $3
-                            , $4
-                            , $5
-                            )
-                        ",
-                        trip_id,
-                        stop_id,
-                        stop_sequence,
-                        arrival_time,
-                        arrival_delay,
-                    );
-
-                    if let Err(e) = q.execute(&mut *tx).await {
-                        error!(?e, "Failed to insert live trip stop time");
-                        return;
-                    }
-                }
+            if let Err(e) = snapshot::insert_stop_times(&mut tx, &all_stop_times).await {
+                error!(?e, "Failed to insert live trip stop times");
+                return;
             }
 
             if let Err(e) = Database::logged(
@@ -1025,41 +806,42 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
         INITIAL_STATE.update_vehicles(vehicles.clone()).await;
 
         vehicles_app_state.send_transmission(Transmission::BroadcastToAll(vehicles));
-    });
+    };
+    tokio::join!(active_stops_task, vehicles_task);
 }
 
+/// Depth of the outbound transmission ring. Broadcasts are recoverable from
+/// `INITIAL_STATE` and per-account notices from the database, so this only sets
+/// how much slack a connection has before it has to resend them.
+const TRANSMISSION_CAPACITY: usize = 256;
+
 pub struct V1AppState {
-    tx: watch::Sender<Arc<Transmission>>,
-    pub rx: watch::Receiver<Arc<Transmission>>,
+    tx: broadcast::Sender<Arc<Transmission>>,
     flag_changes: watch::Sender<()>,
 }
 impl V1AppState {
     pub fn new() -> Self {
-        let (tx, rx) = watch::channel(Arc::new(Transmission::Empty));
+        let (tx, _) = broadcast::channel(TRANSMISSION_CAPACITY);
         let (flag_changes, _) = watch::channel(());
 
-        Self {
-            tx,
-            rx,
-            flag_changes,
-        }
+        Self { tx, flag_changes }
     }
 
     pub fn send_transmission(&self, transmission: Transmission) {
+        match &transmission {
+            Transmission::BroadcastToAll(bytes) => {
+                trace!(len = bytes.len(), "Sending broadcast");
+            }
+            Transmission::UserNotice { user_id, bytes } => {
+                trace!(%user_id, len = bytes.len(), "Sending per-account notice");
+            }
+        }
+
         let _ = self.tx.send(Arc::new(transmission));
     }
 
-    pub fn get_transmission_receiver(&self) -> watch::Receiver<Arc<Transmission>> {
-        self.rx.clone()
-    }
-
-    pub async fn wait_for_transmission(
-        &self,
-        rx: &mut watch::Receiver<Arc<Transmission>>,
-    ) -> Result<Arc<Transmission>, watch::error::RecvError> {
-        rx.changed().await?;
-
-        Ok(rx.borrow_and_update().clone())
+    pub fn get_transmission_receiver(&self) -> broadcast::Receiver<Arc<Transmission>> {
+        self.tx.subscribe()
     }
 }
 
@@ -1090,7 +872,6 @@ pub struct ToastData {
 }
 
 pub enum Transmission {
-    Empty,
     BroadcastToAll(Bytes),
     /// Per-account notice(s) for `user_id` (broadcast to all connection tasks,
     /// each filters by its own user). `bytes` is a serialized `Broadcast::UserNotices`.

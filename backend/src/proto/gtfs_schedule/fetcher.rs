@@ -197,6 +197,9 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
 
     if !forced && res {
         trace!("Schedule is up to date");
+        // A previous forced import can have kept the same fetch metadata while
+        // its enrichment refresh failed. Retrying here also covers that case.
+        crate::database::schedule_metadata::reload().await?;
         return Ok(None);
     }
 
@@ -210,6 +213,12 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
 
     match parse_result {
         Ok(()) => {
+            schedule_offsets::reload().await;
+            crate::database::schedule_metadata::reload().await?;
+            crate::database::service_days::reload().await;
+
+            // Publish fetch metadata only after enrichment loads successfully,
+            // so a failed cache refresh is retried on the next schedule fetch.
             debug!("Schedule read to database, committing metadata");
 
             Database::logged(
@@ -223,9 +232,6 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
             )
             .await
             .map_err(FetcherError::Database)?;
-
-            schedule_offsets::reload().await;
-            crate::database::service_days::reload().await;
 
             debug!("Schedule updated");
 

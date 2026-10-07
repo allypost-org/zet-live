@@ -1,4 +1,8 @@
-use std::{io::Read, time::Instant};
+use std::{
+    io::Read,
+    sync::atomic::{AtomicU64, Ordering},
+    time::Instant,
+};
 
 use sqlx::AssertSqlSafe;
 use tracing::{debug, trace, warn};
@@ -14,6 +18,12 @@ pub use route::*;
 pub use shape::*;
 pub use stop::*;
 pub use trip::*;
+
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+pub fn generation() -> u64 {
+    GENERATION.load(Ordering::Acquire)
+}
 
 #[derive(Debug)]
 pub struct GtfsSchedule;
@@ -45,7 +55,6 @@ impl GtfsSchedule {
                 file: "routes.txt",
                 optional: false,
                 table: "gtfs_routes",
-                rebuild_indexes_around_copy: false,
                 columns: &[
                     ("route_id", "route_id"),
                     ("agency_id", "agency_id"),
@@ -68,7 +77,6 @@ impl GtfsSchedule {
                 file: "shapes.txt",
                 optional: false,
                 table: "gtfs_shapes",
-                rebuild_indexes_around_copy: false,
                 columns: &[
                     ("shape_id", "shape_id"),
                     ("shape_pt_lat", "shape_pt_lat"),
@@ -87,7 +95,6 @@ impl GtfsSchedule {
                 file: "stops.txt",
                 optional: false,
                 table: "gtfs_stops",
-                rebuild_indexes_around_copy: false,
                 columns: &[
                     ("stop_id", "stop_id"),
                     ("stop_code", "stop_code"),
@@ -111,7 +118,6 @@ impl GtfsSchedule {
                 file: "trips.txt",
                 optional: false,
                 table: "gtfs_trips",
-                rebuild_indexes_around_copy: false,
                 columns: &[
                     ("route_id", "route_id"),
                     ("service_id", "service_id"),
@@ -133,7 +139,6 @@ impl GtfsSchedule {
                 file: "calendar.txt",
                 optional: true,
                 table: "gtfs_calendar",
-                rebuild_indexes_around_copy: false,
                 columns: &[
                     ("service_id", "service_id"),
                     ("monday", "monday"),
@@ -157,7 +162,6 @@ impl GtfsSchedule {
                 file: "calendar_dates.txt",
                 optional: true,
                 table: "gtfs_calendar_dates",
-                rebuild_indexes_around_copy: false,
                 columns: &[
                     ("service_id", "service_id"),
                     ("date", "date"),
@@ -174,7 +178,6 @@ impl GtfsSchedule {
                 file: "stop_times.txt",
                 optional: false,
                 table: "gtfs_stop_times",
-                rebuild_indexes_around_copy: true,
                 columns: &[
                     ("trip_id", "trip_id"),
                     ("arrival_time", "arrival_time"),
@@ -191,13 +194,20 @@ impl GtfsSchedule {
         .await?;
 
         tx.commit().await?;
+        GENERATION.fetch_add(1, Ordering::Release);
         debug!(took = ?start.elapsed(), "Schedule loaded via COPY, analyzing");
 
         let analyze_start = Instant::now();
-        if let Err(e) = sqlx::query!("ANALYZE").execute(&Database::pool()).await {
-            warn!(?e, "Failed to analyze database");
+        if let Err(e) = sqlx::query!(
+            "ANALYZE gtfs_routes, gtfs_shapes, gtfs_stops, gtfs_trips, gtfs_calendar, \
+             gtfs_calendar_dates, gtfs_stop_times"
+        )
+        .execute(&Database::pool())
+        .await
+        {
+            warn!(?e, "Failed to analyze schedule tables");
         } else {
-            debug!(took = ?analyze_start.elapsed(), "Database analyzed");
+            debug!(took = ?analyze_start.elapsed(), "Schedule tables analyzed");
         }
 
         debug!("Database update complete");
@@ -209,11 +219,6 @@ struct FileSpec {
     file: &'static str,
     optional: bool,
     table: &'static str,
-    /// Drop non-PK/non-unique indexes before COPY and recreate them after.
-    /// Bulk `CREATE INDEX` is far cheaper than per-row maintenance during COPY
-    /// — worth it on large tables (~1.7M-row `gtfs_stop_times` measured
-    /// 15.7 s → 6.2 s), negligible benefit on small ones.
-    rebuild_indexes_around_copy: bool,
     /// `(csv_column, table_column)` pairs covering every column the CSV may
     /// contain. Order is irrelevant — the CSV header drives the mapping.
     columns: &'static [(&'static str, &'static str)],
@@ -225,12 +230,6 @@ async fn copy_csv(
     spec: FileSpec,
 ) -> Result<(), FileDataError> {
     let file_start = Instant::now();
-
-    let index_defs = if spec.rebuild_indexes_around_copy {
-        Some(capture_and_drop_indexes(tx, spec.table).await?)
-    } else {
-        None
-    };
 
     let zip_bytes = zip_bytes.clone();
     let file = spec.file.to_string();
@@ -300,53 +299,8 @@ async fn copy_csv(
     copy.send(data).await?;
     let rows = copy.finish().await?;
 
-    if let Some(defs) = &index_defs {
-        let rebuild_start = Instant::now();
-        for def in defs {
-            sqlx::query(AssertSqlSafe(def.clone()))
-                .execute(&mut **tx)
-                .await?;
-        }
-        trace!(
-            table = spec.table,
-            index_count = defs.len(),
-            took = ?rebuild_start.elapsed(),
-            "indexes rebuilt after COPY"
-        );
-    }
-
     trace!(table = spec.table, rows, took = ?file_start.elapsed(), "COPY loaded");
     Ok(())
-}
-
-async fn capture_and_drop_indexes(
-    tx: &mut sqlx::PgConnection,
-    table: &str,
-) -> Result<Vec<String>, sqlx::Error> {
-    let rows = sqlx::query!(
-        "SELECT c.relname, i.indexdef
-         FROM pg_indexes i
-         JOIN pg_class c ON c.relname = i.indexname
-         JOIN pg_index x ON x.indexrelid = c.oid
-         WHERE i.schemaname = 'public'
-           AND i.tablename = $1
-           AND NOT x.indisprimary
-           AND NOT x.indisunique",
-        table,
-    )
-    .fetch_all(&mut *tx)
-    .await?;
-
-    let mut defs = Vec::with_capacity(rows.len());
-    for row in rows {
-        let name = row.relname;
-        let def = row.indexdef.ok_or(sqlx::Error::RowNotFound)?;
-        sqlx::query(AssertSqlSafe(format!("DROP INDEX {name}")))
-            .execute(&mut *tx)
-            .await?;
-        defs.push(def);
-    }
-    Ok(defs)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -388,7 +342,7 @@ pub enum FileDataError {
 /// The static schedule tables compute this via a GENERATED column (migration
 /// `20260814120000_fix_trip_key_regex.up.sql`); this function remains the
 /// source of truth for the realtime tables (`live_trips`, `live_vehicles`)
-/// which are still populated per-row from the GTFS-RT feed. The SQL and Rust
+/// which are populated from the GTFS-RT feed. The SQL and Rust
 /// implementations MUST stay in sync — the guard regex strips the service-id
 /// segment regardless of its length.
 pub fn trip_key(trip_id: &str) -> String {

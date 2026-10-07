@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { PageControls, usePageState } from "@/components/page-controls";
 import { Badge, Button, Input, Textarea } from "@/components/ui";
 import { type FeatureFlagRow, type FlagState, flagStates } from "@/entity/schemas";
 import { useUpdateFeatureFlag, useUsers } from "@/lib/queries";
@@ -20,19 +21,20 @@ function stateLabel(state: FlagState): string {
 export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const users = useUsers();
+  const page = usePageState(String(flag.id));
+  const users = useUsers(page.options);
   const update = useUpdateFeatureFlag();
 
   const [state, setState] = useState<FlagState>(flag.state);
   const [description, setDescription] = useState(flag.description);
+  const [knownUsers, setKnownUsers] = useState(flag.scopedUsers);
   const [userIds, setUserIds] = useState<string[]>(flag.scopedUsers.map((u) => u.id));
-  const [query, setQuery] = useState("");
 
   useEffect(() => {
+    setKnownUsers(flag.scopedUsers);
     setState(flag.state);
     setDescription(flag.description);
     setUserIds(flag.scopedUsers.map((u) => u.id));
-    setQuery("");
   }, [flag]);
 
   useEffect(() => {
@@ -56,8 +58,8 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
     () =>
       userIds.map(
         (id) =>
-          users.data?.find((u) => u.id === id) ??
-          flag.scopedUsers.find((u) => u.id === id) ?? {
+          users.data?.items.find((u) => u.id === id) ??
+          knownUsers.find((u) => u.id === id) ?? {
             id,
             displayName: null,
             email: null,
@@ -66,19 +68,10 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
             noticeCount: 0,
           },
       ),
-    [userIds, users.data, flag.scopedUsers],
+    [userIds, users.data, knownUsers],
   );
 
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return (users.data ?? [])
-      .filter((u) => !userIds.includes(u.id))
-      .filter(
-        (u) =>
-          q === "" || `${u.displayName ?? ""} ${u.email ?? ""} ${u.id}`.toLowerCase().includes(q),
-      )
-      .slice(0, 8);
-  }, [users.data, userIds, query]);
+  const results = (users.data?.items ?? []).filter((u) => !userIds.includes(u.id));
 
   async function save() {
     try {
@@ -182,9 +175,9 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
             </p>
             <p className="text-text-dim mb-2 text-xs">Applies only while the state is Scoped.</p>
             <Input
-              value={query}
+              value={page.options.search}
               onChange={(e) => {
-                setQuery(e.target.value);
+                page.setSearch(e.target.value);
               }}
               placeholder="Search users by name, email, id…"
             />
@@ -197,7 +190,10 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
                     className="hover:bg-border block w-full cursor-pointer px-2 py-1.5 text-left text-xs"
                     onClick={() => {
                       setUserIds((prev) => [...prev, u.id]);
-                      setQuery("");
+                      setKnownUsers((prev) => [
+                        ...prev.filter((known) => known.id !== u.id),
+                        { id: u.id, displayName: u.displayName, email: u.email },
+                      ]);
                     }}
                   >
                     {userLabel(u)}
@@ -205,6 +201,8 @@ export function FlagDrawer({ flag, onClose }: { flag: FeatureFlagRow; onClose: (
                 ))}
               </div>
             ) : null}
+            <PageControls page={page} nextCursor={users.data?.nextCursor} busy={users.isFetching} />
+            {users.isError && <p className="text-text-dim text-xs">Failed to load users.</p>}
             <div className="mt-2 flex flex-wrap gap-1">
               {selectedUsers.map((u) => (
                 <span

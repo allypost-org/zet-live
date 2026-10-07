@@ -42,10 +42,5 @@ where
 
 pub async fn resolve_current_user(headers: &HeaderMap) -> Option<ResolvedUser> {
     let token = session::bearer_token(headers)?;
-    let session_row = session::lookup_session(token).await.ok()??;
-    let user = accounts::user_by_id(&session_row.user_id).await?;
-    Some(ResolvedUser {
-        user,
-        session_id: session_row.id,
-    })
+    session::lookup_user(token).await.ok()?
 }
