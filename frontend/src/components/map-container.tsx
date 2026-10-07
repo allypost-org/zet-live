@@ -34,9 +34,16 @@ import {
 } from "@/utils/polyfill/requestSomeCallback";
 import { boardingLocationLabel } from "@/app/boarding-location";
 import { useFeatureFlag } from "@/feature-flags-store";
+import { useSelectedStopTripIds } from "@/hooks/use-selected-stop-trips";
 
 /** Zoom at and above which all stops are shown (not just active ones). */
 const ALL_STOPS_MIN_ZOOM = 15;
+
+/**
+ * Fraction of the viewport the bottom sheet covers at its default expanded height
+ * (40dvh). Reserving it as bottom padding lifts fitted points clear of the sheet.
+ */
+const SHEET_VIEWPORT_FRACTION = 0.42;
 
 const styleLoaders: Record<MapStyleId, () => Promise<StyleSpecification>> = {
   "3d": async () => (await import("@/data/maps/style/3d.json")).default as StyleSpecification,
@@ -244,14 +251,11 @@ export function MapContainer() {
   const showTrams = useSetting("showTrams");
 
   const flyToTarget = useStore((s) => s.flyToTarget);
+  const fitBoundsTarget = useStore((s) => s.fitBoundsTarget);
 
   const selectedVehicleId = selection?.type === "vehicle" ? selection.id : null;
   const focusedStopId = stopBoardFlag ? (stopSelection?.focusedStopId ?? null) : null;
-  const selectedStopTripIds = useMemo(() => {
-    if (focusedStopId === null) return stopSelection?.tripIds ?? null;
-    const board = stopSelection?.departureBoards.find((entry) => entry.stopId === focusedStopId);
-    return new Set((board?.departures ?? []).flatMap((d) => (d.kind === "live" ? [d.tripId] : [])));
-  }, [stopSelection, focusedStopId]);
+  const selectedStopTripIds = useSelectedStopTripIds();
   const selectedGbfsStationId = selection?.type === "gbfs-station" ? selection.id : null;
   const gbfsLayerVisible =
     showGbfsStations && (selection === null || selection.type === "gbfs-station");
@@ -412,6 +416,21 @@ export function MapContainer() {
     });
     useStore.setState({ flyToTarget: null });
   }, [flyToTarget]);
+
+  useEffect(() => {
+    if (!fitBoundsTarget) return;
+    mapRef.current?.fitBounds(fitBoundsTarget, {
+      duration: 1000,
+      maxZoom: 16,
+      padding: {
+        top: 80,
+        bottom: window.innerHeight * SHEET_VIEWPORT_FRACTION,
+        left: 32,
+        right: 32,
+      },
+    });
+    useStore.setState({ fitBoundsTarget: null });
+  }, [fitBoundsTarget]);
 
   const vehicleIconsToEnsure = useMemo<VehicleIconDescriptor[]>(() => {
     const unique = new Map<string, VehicleIconDescriptor>();

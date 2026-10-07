@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from "react";
-import { toast } from "sonner";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
 import type { TripStopTimeEntry } from "@/app/trip-stop-times";
 import { buildArrivalTimeLookup, lookupStopArrivalTime } from "@/app/trip-stop-times";
@@ -9,6 +8,7 @@ import {
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
 import { formatMinutesFromNow } from "@/utils/time";
+import { CenterIcon, ShareIcon, SheetActions, shareSheetLink } from "@/components/sheet-actions";
 
 type Props = {
   vehicle: VehicleV1;
@@ -151,84 +151,42 @@ export function VehicleSheet({
           })}
         </ul>
       </div>
-      <div className="border-outline flex shrink-0 items-center gap-2 border-t px-4 py-2">
-        <label className="text-on-surface-muted flex cursor-pointer items-center gap-2 text-xs font-semibold select-none">
-          Follow
-          <button
-            role="switch"
-            aria-checked={followEnabled}
-            type="button"
-            onClick={onToggleFollow}
-            className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${followEnabled ? "bg-primary" : "bg-on-surface-faint"}`}
-          >
-            <span
-              className={`bg-surface inline-block h-5 w-5 rounded-full shadow-sm transition-transform ${followEnabled ? "translate-x-4" : "translate-x-0"}`}
-            />
-          </button>
-        </label>
-        <div className="ml-auto flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
+      <SheetActions
+        leading={
+          <label className="text-on-surface-muted flex cursor-pointer items-center gap-2 text-xs font-semibold select-none">
+            Follow
+            <button
+              role="switch"
+              aria-checked={followEnabled}
+              type="button"
+              onClick={onToggleFollow}
+              className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${followEnabled ? "bg-primary" : "bg-on-surface-faint"}`}
+            >
+              <span
+                className={`bg-surface inline-block h-5 w-5 rounded-full shadow-sm transition-transform ${followEnabled ? "translate-x-4" : "translate-x-0"}`}
+              />
+            </button>
+          </label>
+        }
+        actions={[
+          {
+            key: "share",
+            label: "Share",
+            icon: <ShareIcon />,
+            onClick: () => {
               const params = new URLSearchParams({ vehicle: vehicle.id });
               if (vehicle.tripId) params.set("trip", vehicle.tripId);
-              const url = `${location.origin}${location.pathname}?${params}`;
-              if (navigator.share) {
-                const shareTitle = `[${vehicle.routeId}] ${vehicle.getDisplayName()}`;
-
-                navigator.share({ title: shareTitle, url }).catch(() => {});
-              } else {
-                navigator.clipboard.writeText(url).then(
-                  () =>
-                    toast.success("Link copied to clipboard", {
-                      dismissible: true,
-                    }),
-                  () => {},
-                );
-              }
-            }}
-            className="bg-surface-dim text-on-surface-muted hover:bg-surface-hover flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-              <polyline points="16 6 12 2 8 6" />
-              <line x1="12" y1="2" x2="12" y2="15" />
-            </svg>
-            Share
-          </button>
-          <button
-            type="button"
-            onClick={onLocate}
-            className="bg-surface-dim text-on-surface-muted hover:bg-surface-hover flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
-            </svg>
-            Center
-          </button>
-        </div>
-      </div>
+              shareSheetLink(`[${vehicle.routeId}] ${vehicle.getDisplayName()}`, params);
+            },
+          },
+          {
+            key: "center",
+            label: "Center",
+            icon: <CenterIcon />,
+            onClick: onLocate,
+          },
+        ]}
+      />
     </div>
   );
 }

@@ -9,6 +9,14 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { DepartureSummary } from "@/components/departures-board";
 import { GroupedStopDepartures } from "@/components/grouped-stop-departures";
 import { LineBadge } from "@/components/line-badge";
+import {
+  CenterIcon,
+  FitAllIcon,
+  ShareIcon,
+  SheetActions,
+  shareSheetLink,
+  type SheetAction,
+} from "@/components/sheet-actions";
 import { Toaster } from "sonner";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useUrlSync } from "@/hooks/use-url-sync";
@@ -26,6 +34,8 @@ import { AuthButton } from "./components/auth-button";
 import { AuthModal } from "./components/auth-modal";
 import { NoticeBar } from "./components/notice-bar";
 import { useWakeLock } from "@/hooks/use-wake-lock";
+import { useSelectedStopTripIds } from "@/hooks/use-selected-stop-trips";
+import { boundsFromPoints } from "@/utils/map";
 import { useFeatureFlag } from "@/feature-flags-store";
 import { useSetting } from "./settings";
 import {
@@ -121,6 +131,59 @@ export function App() {
     : -1;
 
   const isOpen = selectedVehicle !== null || selectedStop !== null || selectedGbfsStation !== null;
+
+  const selectedStopTripIds = useSelectedStopTripIds();
+
+  // `displayedStops` holds exactly the selected stop(s) while a stop is selected, so it
+  // is also the authoritative position for framing the camera.
+  function fitStopBounds(includeVehicles: boolean) {
+    const points: [number, number][] = displayedStops.map((stop) => [stop.lng, stop.lat]);
+    if (points.length === 0) return;
+
+    if (includeVehicles && selectedStopTripIds) {
+      for (const vehicle of vehicles.values()) {
+        if (selectedStopTripIds.has(vehicle.tripId)) {
+          points.push([vehicle.lng, vehicle.lat]);
+        }
+      }
+    }
+
+    const bounds = boundsFromPoints(points);
+    if (bounds) useStore.setState({ fitBoundsTarget: bounds });
+  }
+
+  const stopActions: SheetAction[] = selectedStop
+    ? [
+        {
+          key: "share",
+          label: "Share",
+          icon: <ShareIcon />,
+          onClick: () => {
+            const params = new URLSearchParams();
+            for (const id of selectedStop.ids) params.append("stop", id);
+            shareSheetLink(selectedStop.name, params);
+          },
+        },
+        {
+          key: "center",
+          label: "Center",
+          icon: <CenterIcon />,
+          onClick: () => {
+            fitStopBounds(false);
+          },
+        },
+        {
+          key: "fit-all",
+          label: "Fit all",
+          icon: <FitAllIcon />,
+          onClick: () => {
+            fitStopBounds(true);
+          },
+          // Trips are still loading; framing now would silently ignore the vehicles.
+          disabled: selectedStopTripIds === null,
+        },
+      ]
+    : [];
 
   let sheetTitle: ReactNode = null;
   let minimizedBody: ReactNode | undefined;
@@ -274,22 +337,27 @@ export function App() {
               onStopClick={selectStop}
             />
           ) : selectedStop ? (
-            stopBoardFlag && stopSelection ? (
-              <GroupedStopDepartures
-                stopSelection={stopSelection}
-                onVehicleClick={(vehicleId, tripId) => {
-                  selectVehicle(vehicleId, tripId, true);
-                }}
-              />
-            ) : (
-              <StopSheet
-                stop={selectedStop}
-                arrivals={stopArrivalTimes}
-                onArrivalClick={(vehicleId, tripId) => {
-                  selectVehicle(vehicleId, tripId, true);
-                }}
-              />
-            )
+            <div className="flex max-h-full flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {stopBoardFlag && stopSelection ? (
+                  <GroupedStopDepartures
+                    stopSelection={stopSelection}
+                    onVehicleClick={(vehicleId, tripId) => {
+                      selectVehicle(vehicleId, tripId, true);
+                    }}
+                  />
+                ) : (
+                  <StopSheet
+                    stop={selectedStop}
+                    arrivals={stopArrivalTimes}
+                    onArrivalClick={(vehicleId, tripId) => {
+                      selectVehicle(vehicleId, tripId, true);
+                    }}
+                  />
+                )}
+              </div>
+              <SheetActions actions={stopActions} />
+            </div>
           ) : selectedGbfsStation ? (
             <GbfsStationSheet station={selectedGbfsStation} />
           ) : null}

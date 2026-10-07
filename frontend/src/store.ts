@@ -84,6 +84,8 @@ export type StoreState = {
   maxBounds: [[number, number], [number, number]] | null;
 
   flyToTarget: { longitude: number; latitude: number } | null;
+  /** One-shot camera request: MapContainer clears it once it has moved the camera. */
+  fitBoundsTarget: [[number, number], [number, number]] | null;
 
   searchMatchedVehicleMapIds: Set<string> | null;
   searchMatchedStopIds: Set<string> | null;
@@ -161,6 +163,7 @@ export const useStore = create<StoreState>()(
     maxBounds: null,
 
     flyToTarget: null,
+    fitBoundsTarget: null,
 
     searchMatchedVehicleMapIds: null,
     searchMatchedStopIds: null,
