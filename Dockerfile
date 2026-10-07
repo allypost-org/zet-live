@@ -45,15 +45,15 @@ WORKDIR /app
 ##
 FROM chef AS planner
 WORKDIR /chef
-# Generate "lockfile" aka dependency dump
-RUN --mount=type=bind,target=.,source=./backend \
-  cargo chef prepare \
-  --recipe-path /app/recipe.json
+COPY ./backend ./
+RUN cargo chef prepare \
+  --recipe-path recipe.json \
+  ;
 
 
-##########
-# Step 2 #
-##########
+###########
+# Step 2a #
+###########
 ##
 ## Build frontend
 ##
@@ -66,9 +66,9 @@ RUN if [ -f .env.docker ]; then mv .env.docker .env && echo "Copied .env.docker 
 RUN bun run build
 
 
-##########
+###########
 # Step 2b #
-##########
+###########
 ##
 ## Build admin frontend
 ##
@@ -80,13 +80,35 @@ COPY ./frontend-admin/ .
 RUN bun run build
 
 
+###########
+# Step 2c #
+###########
+##
+## Build dependencies once (shared layer)
+##
+FROM chef AS deps
+ARG RUST_TARGET
+COPY --from=planner /chef/recipe.json recipe.json
+# NOTE: do NOT cache-mount /app/target here. cargo-chef writes the cooked
+# dependencies into that directory so they persist in the layer and are
+# inherited by the builder stage.
+RUN cargo chef cook \
+  --release \
+  --target "${RUST_TARGET}" \
+  --recipe-path recipe.json \
+  ;
+
+
 ##########
 # Step 3 #
 ##########
 ##
 ## Build app with the cached dependencies
 ##
-FROM chef AS builder
+FROM deps AS builder
+ARG RUST_TARGET
+ARG APP_FEATURES
+ARG BINARY_NAME
 # Install upx - https://upx.github.io/
 RUN cd "$(mktemp --directory)" && \
   curl -sL "$(\
@@ -100,29 +122,15 @@ RUN cd "$(mktemp --directory)" && \
   rm -rf "$(pwd)" && \
   echo "Installed upx"
 RUN apt-get update && apt-get install -y protobuf-compiler
-# Build dependencies
-ARG RUST_TARGET
-ARG APP_FEATURES
-ARG BINARY_NAME
-RUN --mount=from=planner,source=/app/recipe.json,target=/app/recipe.json \
-  cargo chef cook \
-  --release \
-  --target "${RUST_TARGET}" \
-  --features "${APP_FEATURES}" \
-  --package "${BINARY_NAME}" \
-  --recipe-path recipe.json
-ARG RUST_TARGET
-RUN rustup target add "${RUST_TARGET}"
-# Copy rest of files and compile
-# only the remaining app code
-ARG RUST_TARGET
-ARG APP_FEATURES
-ARG BINARY_NAME
-COPY --from=frontend /app/dist ../frontend/dist
-COPY --from=frontend-admin /app/dist ../frontend-admin/dist
-RUN --mount=type=bind,target=.,source=./backend,rw \
-  --mount=type=bind,target=.git,source=./.git,ro \
-  cargo build \
+# Copy frontend build outputs (rust-embed expects ../frontend/dist)
+COPY --from=frontend /app/dist /frontend/dist
+COPY --from=frontend-admin /app/dist /frontend-admin/dist
+# Copy backend source and .git (build-info needs git metadata).
+# COPY (not bind mount) so /app/target from deps is preserved.
+COPY ./backend ./
+COPY ./.git ./.git
+# Build and compress
+RUN cargo build \
   --release \
   --target "${RUST_TARGET}" \
   --features "${APP_FEATURES}" \
