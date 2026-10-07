@@ -49,18 +49,34 @@ export function BottomSheet({
   const dragStartHeight = useRef(0);
   const dragging = useRef(false);
   const suppressClick = useRef(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const contentHeightRef = useRef(0);
 
   const minimized = sheetState === "minimized";
   const maximized = sheetState === "maximized";
 
+  const measureContent = useCallback(() => {
+    const body = contentRef.current?.firstElementChild as HTMLElement | null;
+    if (!body) return 0;
+    const previous = body.style.maxHeight;
+    body.style.maxHeight = "none";
+    const measured = body.offsetHeight;
+    body.style.maxHeight = previous;
+    return measured;
+  }, []);
+
   const getHeights = useCallback(() => {
-    const minimizedHeight =
-      (headerRef.current?.offsetHeight ?? 0) + (summaryRef.current?.offsetHeight ?? 0);
-    const expanded = Math.max(minimizedHeight, expandedSizeRef.current?.offsetHeight ?? 0);
+    const headerHeight = headerRef.current?.offsetHeight ?? 0;
+    const minimizedHeight = headerHeight + (summaryRef.current?.offsetHeight ?? 0);
+    const contentWithHeader = headerHeight + contentHeightRef.current;
+    const expandedCap = expandedSizeRef.current?.offsetHeight ?? Infinity;
+    const maximizedCap = maximizedSizeRef.current?.offsetHeight ?? Infinity;
+
+    const expanded = Math.max(minimizedHeight, Math.min(contentWithHeader, expandedCap));
     return {
       minimized: minimizedHeight,
       expanded,
-      maximized: Math.max(expanded, maximizedSizeRef.current?.offsetHeight ?? 0),
+      maximized: Math.max(expanded, Math.min(contentWithHeader, maximizedCap)),
     };
   }, []);
 
@@ -68,28 +84,44 @@ export function BottomSheet({
 
   useLayoutEffect(() => {
     if (!rendered) return;
+    const region = contentRef.current;
+    if (!region) return;
 
     const resize = () => {
       if (dragging.current) return;
+      contentHeightRef.current = measureContent();
       const target = getHeights()[sheetState];
       if (height.get() === 0) height.set(target);
       else animate(height, target, SPRING);
     };
     resize();
 
-    const observer = new ResizeObserver(resize);
-    for (const element of [
-      headerRef.current,
-      summaryRef.current,
-      expandedSizeRef.current,
-      maximizedSizeRef.current,
-    ]) {
-      if (element) observer.observe(element);
-    }
-    return () => {
-      observer.disconnect();
+    let bodyObserver: ResizeObserver | null = null;
+    const observeBody = () => {
+      bodyObserver?.disconnect();
+      bodyObserver = new ResizeObserver(resize);
+      const body = region.firstElementChild;
+      if (body) bodyObserver.observe(body);
     };
-  }, [rendered, sheetState, getHeights, height]);
+    observeBody();
+
+    const swapObserver = new MutationObserver(() => {
+      observeBody();
+      resize();
+    });
+    swapObserver.observe(region, { childList: true });
+
+    const chromeObserver = new ResizeObserver(resize);
+    for (const element of [headerRef.current, summaryRef.current]) {
+      if (element) chromeObserver.observe(element);
+    }
+
+    return () => {
+      bodyObserver?.disconnect();
+      swapObserver.disconnect();
+      chromeObserver.disconnect();
+    };
+  }, [rendered, sheetState, getHeights, measureContent, height]);
 
   useEffect(() => {
     if (open) {
@@ -269,6 +301,7 @@ export function BottomSheet({
         </motion.div>
 
         <div
+          ref={contentRef}
           aria-hidden={minimized}
           inert={minimized}
           className="min-h-0 flex-1 overflow-auto overscroll-y-contain"

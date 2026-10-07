@@ -82,7 +82,7 @@ export function VehicleSheet({
 
   return (
     <div className="flex max-h-full flex-col">
-      <div className="flex max-h-full flex-col gap-2 overflow-y-auto px-4 pb-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-3">
         {tripFetchError ? (
           <div className="mx-auto flex w-full items-center justify-center gap-1.5 rounded bg-amber-100 px-2.5 py-1.5 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
             <svg
