@@ -7,17 +7,22 @@ and the baked-in frontend. Run commands from `backend/` (or via `just backend <a
 
 ```
 just dev-watch          # hot-reload dev server (watchexec, NOT cargo watch)
-just dev-run            # cargo run (target musl); depends on migrations-run
+just dev-run server     # cargo run (target musl); depends on migrations-run
 just build              # SQLX_OFFLINE=true cargo build --release --target musl
 just run                # SQLX_OFFLINE=true cargo run --release --target musl
 just test               # SQLX_OFFLINE=true cargo test --workspace --all-features (no tests yet)
 just test-watch         # watchexec + test
 just fmt-dev            # clippy --fix + nightly cargo fmt  (REQUIRED — see below)
+just dev-db             # per-worktree dev database (subcommands listed below)
+just dev-env            # link backend/.env to a file shared by all worktrees
 just sqlx-regenerate    # regenerate the .sqlx offline cache (see below)
 just migrations-add     # sqlx migrate add -r <name>  (creates reversible .up/.down.sql)
 just migrations-list    # sqlx migrate info
 just migrations-run     # sqlx migrate run
 ```
+
+`just dev-run` takes the `server` subcommand; a bare `just dev-run` exits with a
+usage error.
 
 **Always use `just fmt-dev`** for formatting/lint/compile-checking. It runs
 `clippy --fix --allow-dirty --allow-staged` then **nightly** `cargo fmt`. Do NOT
@@ -26,6 +31,46 @@ run `just fmt`, `just lint`, or `just lint-fix` on their own.
 All commands set `RUSTFLAGS='-C target-feature=+crt-static'` and target
 **`x86_64-unknown-linux-musl`** — the `musl` rustup target and `musl-tools` must
 be installed. (The Dockerfile instead builds for `x86_64-unknown-linux-gnu`.)
+
+## Dev database (one per worktree)
+
+Every worktree gets its own database inside **one** shared `zet-live-pg`
+container, so worktrees never collide on ports, container names, or data.
+`just` derives `DATABASE_URL` from the worktree's directory — see `scripts/dev-db.sh`.
+`just dev-db` with no arguments lists the subcommands:
+
+```
+just dev-db up                  # start the shared container
+just dev-db down                # stop it
+just dev-db create              # create this worktree's database, forked from the source
+just dev-db reset               # drop, re-fork, and migrate this worktree's database
+just dev-db remove [branch|dir] # drop a worktree's database (--force kicks live sessions)
+just dev-db list                # list dev databases and the worktrees that own them
+just dev-db migrate [branch|dir] # run migrations against a worktree's database
+just dev-db name                # print this worktree's database name
+just dev-db url [branch|dir]    # print a worktree's DATABASE_URL
+```
+
+- **Forking.** A new database is a copy of the *source* database — the worktree
+  for branch `main`, unless `DEV_PG_SOURCE` names another. Forking kicks any
+  session connected to the source, since `CREATE DATABASE ... TEMPLATE` refuses
+  to run otherwise, then copies it and migrates the copy. Migrations fail on a
+  branch that lacks migrations the source recorded, in which case the new
+  database is dropped again and you must point `DEV_PG_SOURCE` at a compatible
+  database.
+- **`remove`** takes a branch name or worktree directory, refuses to drop the
+  source database, and refuses to drop a database with live connections unless
+  given `--force`.
+- **`sqlx-regenerate` is non-destructive**: it prepares against a
+  `zet_live_scratch-<hash>` database, so it never touches worktree data.
+- Overridable via env: `DEV_PG_CONTAINER`, `DEV_PG_IMAGE`, `DEV_PG_HOST`,
+  `DEV_PG_PORT`, `DEV_PG_USER`, `DEV_PG_PASSWORD`, `DEV_PG_DB_PREFIX`,
+  `DEV_PG_SOURCE`. The password is interpolated into the URL raw, so it must be
+  URL-safe.
+- The scripts talk to the server through `docker exec ... psql`, so no local
+  PostgreSQL client is required. `docker` and the `sqlx` CLI are.
+
+**New worktree checklist:** `just dev-db create`, then `just dev-env`.
 
 ## sqlx offline cache (important)
 
@@ -37,14 +82,14 @@ not a live database.
 MUST regenerate the cache or the offline build will fail:**
 
 ```
-just sqlx-regenerate    # temp DB → run migrations → cargo sqlx prepare --workspace
+just sqlx-regenerate    # scratch DB → run migrations → cargo sqlx prepare --workspace
 ```
 
 Commit the regenerated `.sqlx/` files alongside your query change.
 
-The `.sqlx/` cache is Postgres-flavored. Regeneration requires a running PG
-instance (`DATABASE_URL=postgres://... just sqlx-regenerate`) — there is no
-in-process fallback.
+The `.sqlx/` cache is Postgres-flavored. Regeneration needs `docker` (for the
+scratch database) and the `sqlx` CLI — there is no in-process fallback. It runs
+against a throwaway database, so worktree data is unaffected.
 
 ## Migrations
 
@@ -52,18 +97,22 @@ in-process fallback.
 - Reversible sqlx migrations: paired `<timestamp>_<name>.up.sql` / `.down.sql`,
   created via `just migrations-add`.
 - Applied at startup by `sqlx::migrate!("./migrations")` (`src/database/mod.rs`).
-- `just dev-run` runs `sqlx migrate run` first and **requires `DATABASE_URL`
-  to be set** to a `postgres://...` URL — a running PostgreSQL instance is
-  required (no `:memory:` / SQLite fallback).
+- `just dev-run` runs `sqlx migrate run` first, against **this worktree's**
+  database (see *Dev database* above). Run `just dev-db create` in a new
+  worktree before `just dev-run`, or the database will not exist. There is no
+  SQLite or `:memory:` fallback.
 
 ## Environment (`backend/.env`)
 
 Loaded by `dotenvy::dotenv()` (in `main.rs`) and by the backend justfile
-(`dotenv-load`). Key vars:
+(`dotenv-load`). `backend/.env.example` documents the keys. `just dev-env`
+symlinks `backend/.env` to `~/.config/zet-live/dev.env` (mode 600), so every
+worktree shares one set of secrets instead of copying them per branch.
 
-- `DATABASE_URL` — **required**, must be a `postgres://...` URL pointing at a
-  running PostgreSQL instance. (Previously defaulted to `:memory:` with a
-  SQLite dev file at `sqlite:./dev/db/db.sqlite` — both removed.)
+- `DATABASE_URL` — **required by the binary**, but it is **not** read from
+  `.env`: the justfile exports one derived per worktree (see *Dev database*
+  above), and that export wins over `.env`. Run `just dev-db url` to get it for
+  a manual `cargo run`.
 - `LOG_LEVEL` — comma-separated, e.g. `zet_live=trace,query=trace,warn`.
 - `ZI_DATA_FETCH_ENDPOINT`, `ZI_DATA_FETCH_INTERVAL` — GTFS-RT vehicle positions.
 - `ZI_SCHEDULE_FETCH_ENDPOINT`, `ZI_SCHEDULE_FETCH_INTERVAL` — GTFS schedule zip.
@@ -77,7 +126,10 @@ Loaded by `dotenvy::dotenv()` (in `main.rs`) and by the backend justfile
 - `ALLOWED_FRONTEND_ORIGINS` — comma-separated extra origins allowed as the
   OAuth popup `postMessage` target (for split-origin dev). `APP_URL`'s origin
   is always allowed automatically.
-- `SESSION_MAX_AGE_SECS` — session token lifetime (default 2_592_000 = 30d).
+- `SESSION_MAX_AGE` — session token lifetime (default 30 days).
+
+OAuth provider config lives in the `auth_providers` table and is managed through
+the admin API; there are no `AUTH_*` environment variables.
 
 ## Architecture
 

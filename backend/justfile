@@ -4,6 +4,10 @@ set positional-arguments
 rustflags := "-C target-feature=+crt-static"
 rust_target := "x86_64-unknown-linux-musl"
 
+# One postgres container serves every worktree, each with its own database.
+# Never set DATABASE_URL in backend/.env: this is the only source of it.
+export DATABASE_URL := `bash scripts/dev-db.sh url`
+
 default:
     @just --list
 
@@ -93,22 +97,17 @@ fmt:
 sqlx-regenerate:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -z "$DATABASE_URL" ]; then
-      echo "DATABASE_URL must be set to a postgres:// URL"; exit 1;
-    fi
-    export SQLX_OFFLINE=""
-    sqlx database drop -y
-    sqlx database create
-    sqlx migrate run
-    cargo sqlx prepare --workspace
+    # Prepare only needs a migrated schema, so it runs against a scratch
+    # database and leaves this worktree's data alone.
+    bash scripts/dev-db.sh reset-scratch
+    SQLX_OFFLINE="" \
+    DATABASE_URL="$(just dev-env)" \
+      cargo sqlx prepare --workspace
 
 migrations-run:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -z "$DATABASE_URL" ]; then
-      echo "DATABASE_URL is not set"; exit 1;
-    fi
-    sqlx migrate run
+    bash scripts/dev-db.sh migrate
 
 migrations-list:
     sqlx migrate info
@@ -120,12 +119,10 @@ migrations-add $name="":
     fi; \
     sqlx migrate add -r "$name" \
 
-dev-db:
-    docker run \
-      --name zet-live-pg \
-      -e POSTGRES_USER=zet_live \
-      -e POSTGRES_PASSWORD=zet_live \
-      -e POSTGRES_DB=zet_live \
-      -p 127.0.0.1:5436:5432 \
-      postgres:18 \
-    ;
+# Manage this worktree's dev database: `just dev-db` lists the subcommands.
+dev-db *args:
+    @bash scripts/dev-db.sh {{ args }}
+
+# Link backend/.env to a file shared by every worktree, so secrets are not copied per branch.
+dev-env:
+    @bash scripts/dev-db.sh env

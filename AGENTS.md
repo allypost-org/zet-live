@@ -12,7 +12,7 @@ ZET Live — live tracking of ZET (Zagreb) public transit vehicles, plus GBFS bi
 
 ## Structure
 
-- `backend/` — Rust (edition 2024) Axum server. Single crate `zet-live`.
+- `backend/` — Rust (edition 2024) Axum server. Single crate `zet-live`. Each worktree has its own dev database in one shared postgres container, managed by `backend/scripts/dev-db.sh` (see `backend/AGENTS.md`).
 - `frontend/` — React 19 + Vite + Tailwind CSS v4. Managed with bun.
 - `frontend-admin/` — React 19 + Vite + Tailwind + TanStack Router SPA for the admin UI. Separate app from `frontend/`, served same-origin by the admin listener (see `frontend-admin/AGENTS.md`).
 - `docs/` — planning docs only.

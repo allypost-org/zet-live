@@ -5,15 +5,15 @@ default:
     @just --list
 
 frontend *args:
-    cd frontend && \
+    @ cd frontend && \
       just {{ args }}
 
 frontend-admin *args:
-    cd frontend-admin && \
+    @ cd frontend-admin && \
       just {{ args }}
 
 backend *args:
-    cd backend && \
+    @ cd backend && \
       just {{ args }}
 
 build:
@@ -22,4 +22,4 @@ build:
       && just backend build \
 
 run *args: build
-    just backend run {{ args }}
+    @ just backend run {{ args }}
