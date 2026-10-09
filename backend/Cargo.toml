@@ -56,6 +56,7 @@ build-info-build = "0.0.46"
 prost-build = "0.14.4"
 
 [lints.clippy]
+assert_is_empty = "allow"
 cognitive_complexity = "allow"
 default_trait_access = "allow"
 missing_errors_doc = "allow"

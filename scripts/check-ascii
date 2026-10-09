@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C.UTF-8
+
+added="$(
+  git diff --cached --no-ext-diff --no-textconv --no-color -U0 |
+    awk '
+      /^diff --git / { in_hunk = 0 }
+      /^@@ / { in_hunk = 1 }
+      in_hunk && /^\+/ { print }
+    '
+)"
+if hits="$(printf '%s\n' "$added" |
+  grep -nP '\x{2013}|\x{2014}|\x{2018}|\x{2019}|\x{201C}|\x{201D}|\x{2022}|\x{2026}|\x{2192}|\x{00A0}')"; then
+  printf '%s\n' "$hits" >&2
+  echo "Typographic glyphs in added lines; see the AGENTS.md ASCII rule." >&2
+  exit 1
+else
+  status="$?"
+  if [ "$status" -ne 1 ]; then
+    exit "$status"
+  fi
+fi

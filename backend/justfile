@@ -74,6 +74,16 @@ test-watch *args:
 fmt-dev: lint-fix && fmt
     rustup run nightly cargo fmt --all \
 
+check:
+    cargo fmt --all -- --check 2>/dev/null
+    SQLX_OFFLINE=true \
+    cargo clippy \
+        --locked \
+        --workspace \
+        --all-targets \
+        --all-features \
+        -- -D warnings
+
 lint:
     SQLX_OFFLINE=true \
     cargo clippy \

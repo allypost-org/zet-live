@@ -1,0 +1,34 @@
+amends "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Config.pkl"
+
+min_hk_version = "2.5.0"
+
+hooks {
+  ["pre-commit"] {
+    // The checks use an index snapshot and must not change working files.
+    fix = false
+    stage = false
+    stash = "none"
+    steps {
+      ["diff-hygiene"] {
+        exclusive = true
+        check = "git diff --cached --check"
+      }
+      ["ascii-glyphs"] {
+        exclusive = true
+        check = "bash scripts/check-ascii"
+      }
+      ["backend"] {
+        exclusive = true
+        check = "bash scripts/check-staged-tree backend"
+      }
+      ["frontend"] {
+        exclusive = true
+        check = "bash scripts/check-staged-tree frontend"
+      }
+      ["frontend-admin"] {
+        exclusive = true
+        check = "bash scripts/check-staged-tree frontend-admin"
+      }
+    }
+  }
+}

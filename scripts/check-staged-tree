@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+backend | frontend | frontend-admin)
+  [ "$#" -eq 1 ] || exit 2
+  component="$1"
+  ;;
+*)
+  echo "usage: check-staged-tree backend|frontend|frontend-admin" >&2
+  exit 2
+  ;;
+esac
+
+root="$(git rev-parse --show-toplevel)"
+git_dir="$(git rev-parse --absolute-git-dir)"
+changed_files="$(mktemp)"
+trap 'rm -f "$changed_files"' EXIT
+# Treat renames as deletions and additions so both component boundaries are checked.
+git diff --cached --no-renames --name-only -z >"$changed_files"
+
+affected=false
+while IFS= read -r -d '' path; do
+  case "$path" in
+  *.md) ;;
+  .editorconfig | justfile | hk.pkl | scripts/check-staged-tree)
+    affected=true
+    ;;
+  "$component"/*) affected=true ;;
+  esac
+done <"$changed_files"
+
+if ! "$affected"; then
+  exit 0
+fi
+
+tree="$(git write-tree)"
+snapshot_root="$git_dir/precommit-snapshots"
+snapshot="$snapshot_root/$tree"
+mkdir -p "$snapshot_root"
+
+# Keep snapshot creation and checks under one lock, including frontend builds.
+exec 9>"$snapshot_root/$tree.lock"
+flock 9
+if [ ! -d "$snapshot" ]; then
+  temporary="$(mktemp -d "$snapshot_root/$tree.XXXXXX")"
+  trap 'rm -f "$changed_files"; rm -rf "${temporary:-}"' EXIT
+  git archive "$tree" | tar -x -C "$temporary"
+  mv "$temporary" "$snapshot"
+  temporary=""
+fi
+
+# Hook-local Git variables would otherwise make snapshot commands use the original index.
+while IFS= read -r variable; do
+  unset "$variable"
+done < <(git rev-parse --local-env-vars)
+git -c init.defaultBranch=main init -q "$snapshot"
+cd "$snapshot"
+
+export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+export CARGO_TARGET_DIR="$root/backend/target"
+
+if [ "$component" = backend ]; then
+  packages=(frontend frontend-admin)
+else
+  packages=("$component")
+fi
+for package in "${packages[@]}"; do
+  if [ ! -d "$root/$package/node_modules" ]; then
+    echo "$package/node_modules is missing; run: just $package install" >&2
+    exit 1
+  fi
+  ln -sfn "$root/$package/node_modules" "$package/node_modules"
+  (
+    cd "$package"
+    echo "Checking $package lockfile"
+    bun install --frozen-lockfile --dry-run >/dev/null
+  )
+done
+
+if [ "$component" = backend ]; then
+  # Compile with assets built from the staged source, not existing worktree dist files.
+  just frontend build
+  just frontend-admin build
+fi
+just "$component" check

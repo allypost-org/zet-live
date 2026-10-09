@@ -1,67 +1,38 @@
 # frontend/AGENTS.md
 
-React 19 + Vite + Tailwind CSS v4 app. Managed with **bun**. Run commands from
-`frontend/` (or via `just frontend <args>`).
+Apply the [root instructions](../AGENTS.md) with these public frontend rules.
+This app uses React 19, Vite, Tailwind CSS v4, and bun.
+Run recipes from `frontend/`, or use `just frontend <args>` from the root.
 
-## Developer commands
+## Commands and checks
 
-```
-bun install             # install deps
-bun dev                 # dev server (port 5173)
-bun build               # production build → dist/
-just check              # PARALLEL: type-check + lint-check + fmt-check
-just fix                # fmt (prettier --write) + lint (eslint --fix)
-just type-check         # bun run --bun tsc --noEmit
-just lint-check         # eslint check-only (src/)
-just fmt-check          # prettier check-only (src/)
-```
+| Command           | Purpose                                           |
+| ----------------- | ------------------------------------------------- |
+| `just install`    | Install dependencies with bun                     |
+| `just dev`        | Start Vite on port 5173                           |
+| `just build`      | Build production assets into `dist/`              |
+| `just check`      | Run type, lint, and formatting checks in parallel |
+| `just fix`        | Apply Prettier and ESLint fixes                   |
+| `just type-check` | Run TypeScript without emitting files             |
+| `just lint-check` | Check ESLint rules in `src/`                      |
+| `just fmt-check`  | Check Prettier formatting in `src/`               |
 
-Bare `bun` equivalents: `bun lint` (check, `src/` only), `bun lint:fix`,
-`bun format` (write), `bun format:check`, `bun preview`.
+Use `just check` after source edits. `just fix` and `just lint` edit files; rerun `just check` after fixes.
+Lint checks fail on warnings. Review the output and resolve all findings.
 
-**Gotcha:** `just frontend lint` runs `bun run lint:fix` (**auto-fixes**, does
-not just check). For a check-only pass use `just frontend lint-check`.
+## Implementation rules
 
-Prefer `just check` (or `just fix`) as the one verification command — it covers
-typecheck + lint + format together. No tests exist (yet).
+- Use the automatic JSX transform; do not add `import React` for JSX.
+- Use `@/*` for imports from `src/*`. Keep domain functions in their domain modules; do not add classes solely to group functions.
+- Use Zustand for client state. Existing stores are in `src/store.ts`, `src/feedback-store.ts`, and `src/settings.ts`.
+- The SharedWorker in `src/scripts/worker.ts` handles WebSocket traffic and CBOR decoding. `src/hooks/use-websocket.ts` connects it to the app.
+- Validate API entities with zod schemas in `src/app/entity/v1/`. Infer types from schemas.
+- Use `react-map-gl` and `maplibre-gl` for maps. Map styles live in `src/data/maps/`.
+- Use the existing dependencies for animation, toasts, and search: `motion`, `sonner`, and `fuse.js`. Do not introduce Redux, signals, or lodash.
+- Preserve strict TypeScript and typed ESLint checks. Configuration lives in `tsconfig.json` and `eslint.config.mjs`.
+- Follow `.prettierrc`: double quotes, semicolons, trailing commas, and 100-character width. The Tailwind plugin sorts classes.
 
 ## Environment
 
-All env vars must be prefixed `VITE_` to reach the client (see `README.md`):
-
-| Variable                    | Description                    | Default |
-| :-------------------------- | :----------------------------- | :------ |
-| `VITE_API_URL`              | Backend API URL                | `/api`  |
-| `VITE_PUBLIC_SITE_URL`      | Public site URL (SEO)          |         |
-| `VITE_PLAUSIBLE_SITE_URL`   | Plausible analytics site URL   |         |
-| `VITE_PLAUSIBLE_SCRIPT_URL` | Plausible analytics script URL |         |
-| `VITE_PLAUSIBLE_API_URL`    | Plausible analytics API URL    |         |
-
-## Architecture
-
-- **React 19** via `@vitejs/plugin-react`. JSX transform is `react-jsx` —
-  **do not `import React`**.
-- Path alias: **`@/*` → `src/*`** (`tsconfig.json`, applied by
-  `vite-tsconfig-paths`).
-- **State management: Zustand** — `src/store.ts` (`subscribeWithSelector`),
-  plus `src/feedback-store.ts` and `src/settings.ts`. No signals, no Redux.
-- **Realtime pipeline**: WebSocket runs inside a **SharedWorker**
-  (`src/scripts/worker.ts`); the worker decodes **CBOR** (`cbor2`) frames and
-  posts processed messages back. `src/hooks/use-websocket.ts` is the bridge.
-  Entities/validation are defined with **zod** in `src/app/entity/v1/`.
-- **Map**: `react-map-gl` + `maplibre-gl`. Map styles live under `src/data/maps/`.
-- Key libs: `zod`, `cbor2`, `motion` (animation), `sonner` (toasts),
-  `fuse.js` (search), `clsx` + `tailwind-merge`, `zustand`. (No `lodash`.)
-
-## Lint / formatting conventions
-
-- ESLint flat config (`eslint.config.mjs`): typescript-eslint **`strictTypeChecked`**
-  (requires `projectService: true`), `eslint-plugin-react` +
-  `eslint-plugin-react-hooks`, `eslint-plugin-prettier` (warns). Ignores
-  `dist/**`, `node_modules/**`.
-- Prettier: `prettier-plugin-tailwindcss` auto-sorts Tailwind classes. Config in
-  `.prettierrc` — **double quotes**, trailing commas (`all`), 100 char width,
-  2-space, semis.
-- TypeScript **strict**, with `noUnusedLocals`, `noUnusedParameters`,
-  `noUncheckedIndexedAccess`, `noFallthroughCasesInSwitch`.
-- 2-space indent, LF line endings (`.editorconfig`).
+Client environment variables require the `VITE_` prefix. Do not put secrets in client variables.
+`VITE_API_URL` defaults to `/api`. See [README.md](README.md) for production URL and analytics variables.
