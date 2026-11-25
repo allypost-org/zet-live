@@ -1,7 +1,8 @@
 const APP_CACHE = "zet-app-v1";
 const MAP_CACHE = "zet-map-v1";
 const MAP_HOST_ORIGINS = [
-  "https://tiles.openfreemap.org",
+  // "https://tiles.openfreemap.org",
+  "https://ofm-maps.allypost.net",
   "https://cdn.allypost.net",
   "https://cdn.igr.ec",
 ];

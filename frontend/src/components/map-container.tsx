@@ -7,7 +7,12 @@ import MapGL, {
   type MapLayerMouseEvent,
 } from "react-map-gl/maplibre";
 import { useRef, useCallback, useEffect, useMemo, useState } from "react";
-import type { MapSourceDataEvent, MapStyleDataEvent, StyleSpecification } from "maplibre-gl";
+import type {
+  MapSourceDataEvent,
+  MapStyleDataEvent,
+  RequestTransformFunction,
+  StyleSpecification,
+} from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
 import { useStore, type VehicleLocationPair } from "@/store";
 import { type MapStyleId, useSetting } from "@/settings";
@@ -53,6 +58,18 @@ const styleLoaders: Record<MapStyleId, () => Promise<StyleSpecification>> = {
   satellite: async () =>
     (await import("@/data/maps/style/satellite.json")).default as StyleSpecification,
 };
+
+const OPENFREEMAP_ORIGIN = "https://tiles.openfreemap.org/";
+const OPENFREEMAP_MIRROR = "https://ofm-maps.allypost.net/";
+
+/**
+ * The OpenFreeMap TileJSON contains absolute tile URLs on its own host.
+ * Send these requests to the CDN mirror, so the browser never contacts the upstream host.
+ */
+const transformRequest: RequestTransformFunction = (url) =>
+  url.startsWith(OPENFREEMAP_ORIGIN)
+    ? { url: OPENFREEMAP_MIRROR + url.slice(OPENFREEMAP_ORIGIN.length) }
+    : undefined;
 
 const emptyGeoJSON: FeatureCollection = {
   type: "FeatureCollection",
@@ -606,6 +623,7 @@ export function MapContainer() {
           key={resolvedMapStyleId}
           ref={mapRef}
           mapStyle={mapStyle}
+          transformRequest={transformRequest}
           initialViewState={{
             longitude: 16,
             latitude: 45.8,

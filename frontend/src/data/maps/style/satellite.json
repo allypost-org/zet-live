@@ -10,7 +10,7 @@
     },
     "openmaptiles": {
       "type": "vector",
-      "url": "https://tiles.openfreemap.org/planet"
+      "url": "https://ofm-maps.allypost.net/planet"
     },
     "route-stops": {
       "type": "geojson",
@@ -20,7 +20,7 @@
       }
     }
   },
-  "sprite": "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
+  "sprite": "https://ofm-maps.allypost.net/sprites/ofm_f384/ofm",
   "glyphs": "https://cdn.allypost.net/pkg/pbf-font/{fontstack}/{range}.pbf",
   "layers": [
     {
