@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
-import { defineConfig, loadEnv, type Plugin } from "vite";
+import { build, defineConfig, HtmlTagDescriptor, loadEnv, type Plugin, type Rollup } from "vite";
+
+const SRC_DIR = fileURLToPath(new URL("./src/", import.meta.url));
+const SERVICE_WORKER_ENTRY = path.join(SRC_DIR, "sw/index.ts");
 
 const FAVICON_DIR = fileURLToPath(new URL("./src/assets/img/favicon/", import.meta.url));
 
@@ -133,7 +136,7 @@ function modulePreloadMap(): Plugin {
       enforce: "post",
       handler(_html, ctx) {
         if (!ctx.bundle) return;
-        const tags = [];
+        const tags = [] as HtmlTagDescriptor[];
         for (const chunk of Object.values(ctx.bundle)) {
           if (chunk.type !== "chunk") continue;
           if (MODULE_PRELOAD_CHUNKS.some((t) => chunk.fileName.includes(t))) {
@@ -169,9 +172,9 @@ function frontendVersion(): Plugin {
         }
         if (publicDir && fs.existsSync(publicDir)) {
           for (const fileName of fs.readdirSync(publicDir, { recursive: true })) {
-            const fullPath = path.join(publicDir, fileName);
+            const fullPath = path.join(publicDir, String(fileName));
             if (fs.statSync(fullPath).isFile()) {
-              files.set(fileName.split(path.sep).join("/"), fs.readFileSync(fullPath));
+              files.set(String(fileName).split(path.sep).join("/"), fs.readFileSync(fullPath));
             }
           }
         }
@@ -202,6 +205,66 @@ function frontendVersion(): Plugin {
   };
 }
 
+/**
+ * Bundles the service worker into one classic script at `/sw.js`.
+ *
+ * The worker must keep a fixed URL at the site root: the browser checks that
+ * URL for updates, and the worker location limits the pages it controls.
+ */
+async function bundleServiceWorker(mode: string): Promise<string> {
+  const result = await build({
+    configFile: false,
+    mode,
+    logLevel: "warn",
+    publicDir: false,
+    resolve: { alias: { "@": SRC_DIR } },
+    build: {
+      write: false,
+      emptyOutDir: false,
+      minify: mode === "production",
+      lib: {
+        entry: SERVICE_WORKER_ENTRY,
+        formats: ["iife"],
+        name: "zetServiceWorker",
+        fileName: () => "sw.js",
+      },
+    },
+  });
+
+  const outputs = (Array.isArray(result) ? result : [result]) as Rollup.RollupOutput[];
+  const chunk = outputs
+    .flatMap((x) => x.output)
+    .find((x): x is Rollup.OutputChunk => x.type === "chunk" && x.isEntry);
+  if (!chunk) {
+    throw new Error("Service worker build produced no entry chunk");
+  }
+
+  return chunk.code;
+}
+
+function serviceWorker(): Plugin {
+  let mode = "production";
+
+  return {
+    name: "zet-live:service-worker",
+    configResolved(config) {
+      mode = config.mode;
+    },
+    async generateBundle() {
+      this.emitFile({ type: "asset", fileName: "sw.js", source: await bundleServiceWorker(mode) });
+    },
+    configureServer(server) {
+      server.middlewares.use("/sw.js", (_req, res, next) => {
+        bundleServiceWorker(mode).then((code) => {
+          res.setHeader("content-type", "text/javascript; charset=utf-8");
+          res.setHeader("cache-control", "no-cache");
+          res.end(code);
+        }, next);
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const siteUrl = (env.VITE_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
@@ -212,6 +275,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       tsconfigPaths(),
       webmanifest(),
+      serviceWorker(),
       seo(siteUrl),
       modulePreloadMap(),
       frontendVersion(),

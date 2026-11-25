@@ -31,6 +31,7 @@
     "*.d.ts"
   ],
   "exclude": [
+    "src/sw",
     "dist",
     "node_modules",
     "public"

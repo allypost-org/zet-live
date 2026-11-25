@@ -46,6 +46,7 @@ fmt-check:
 
 type-check:
     bun run --bun tsc --noEmit
+    bun run --bun tsc --noEmit -p src/sw
 
 preview: build
     bun run preview
