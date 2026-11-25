@@ -7,6 +7,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use reqwest::{
+    StatusCode,
+    header::{HeaderValue, IF_MODIFIED_SINCE, IF_NONE_MATCH},
+};
 use tokio::sync::Notify;
 use tracing::{debug, trace, warn};
 
@@ -131,6 +135,40 @@ async fn fetch_and_update_schedule(forced: bool) -> Result<(), FetcherError> {
     Ok(())
 }
 
+/// Adds `If-None-Match` and `If-Modified-Since` from the last imported
+/// schedule. The server then sends 304 without a body when the schedule did
+/// not change.
+async fn add_conditional_headers(
+    mut request: reqwest::RequestBuilder,
+) -> Result<reqwest::RequestBuilder, FetcherError> {
+    let Some(last) = Database::logged(
+        "schedule_meta_latest",
+        sqlx::query!(
+            "SELECT etag, last_modified FROM gtfs_schedule_meta ORDER BY fetched_at DESC LIMIT 1"
+        )
+        .fetch_optional(&Database::pool()),
+    )
+    .await
+    .map_err(FetcherError::Database)?
+    else {
+        return Ok(request);
+    };
+
+    if let Some(etag) = last.etag.and_then(|x| HeaderValue::from_str(&x).ok()) {
+        request = request.header(IF_NONE_MATCH, etag);
+    }
+
+    if let Some(last_modified) = last.last_modified {
+        let date = jiff::fmt::rfc2822::DateTimePrinter::new()
+            .timestamp_to_rfc9110_string(&crate::database::time::to_jiff(last_modified));
+        if let Ok(date) = date {
+            request = request.header(IF_MODIFIED_SINCE, date);
+        }
+    }
+
+    Ok(request)
+}
+
 #[allow(clippy::too_many_lines)]
 #[tracing::instrument(skip_all)]
 async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> {
@@ -147,11 +185,17 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
 
     debug!(url = ?url.as_str(), "Fetching metadata");
 
-    let response = crate::http_client::send_with_backoff(
-        crate::http_client::HTTP_CLIENT
+    let response = crate::http_client::send_with_backoff({
+        let mut request = crate::http_client::HTTP_CLIENT
             .get(url)
-            .timeout(Duration::from_mins(1)),
-    )
+            .timeout(Duration::from_mins(1));
+
+        if !forced {
+            request = add_conditional_headers(request).await?;
+        }
+
+        request
+    })
     .await
     .map_err(FetcherError::Fetch)?;
 
@@ -159,7 +203,13 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
         return Err(FetcherError::Fetch(e));
     }
 
-    trace!(headers = ?response.headers(), "Got metadata response.");
+    trace!(status = ?response.status(), headers = ?response.headers(), "Got metadata response.");
+
+    if response.status() == StatusCode::NOT_MODIFIED {
+        trace!("Schedule is not modified, skipping download");
+        crate::database::schedule_metadata::reload().await?;
+        return Ok(None);
+    }
 
     let modified = {
         let ts = response
