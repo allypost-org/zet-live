@@ -1,4 +1,4 @@
-ARG RUST_VERSION='1.95'
+ARG RUST_VERSION='1.100'
 ARG RUST_TARGET='x86_64-unknown-linux-gnu'
 ARG BINARY_NAME='zet-live'
 
