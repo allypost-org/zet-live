@@ -31,8 +31,7 @@ impl ServiceDays {
     pub fn services_on(&self, date: Date) -> Vec<String> {
         self.by_date
             .get(&date)
-            .map(|set| set.iter().cloned().collect())
-            .unwrap_or_default()
+            .map_or_default(|set| set.iter().cloned().collect())
     }
 
     /// The last date any service runs on; `None` when no calendar data exists.

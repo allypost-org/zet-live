@@ -42,7 +42,7 @@ pub async fn get_routes(headers: HeaderMap) -> impl IntoResponse {
         .fetch_all(&Database::pool()),
     )
     .await
-    .map(|x| {
+    .map_or_default(|x| {
         x.into_iter()
             .map(|x| Route {
                 id: x.route_id,
@@ -62,8 +62,7 @@ pub async fn get_routes(headers: HeaderMap) -> impl IntoResponse {
                 sort_order: None,
             })
             .collect::<Vec<_>>()
-    })
-    .unwrap_or_default();
+    });
 
     JsonOrAccept(Versioned::new(1, routes), headers).into_response()
 }
@@ -129,7 +128,7 @@ pub async fn get_stops(headers: HeaderMap) -> impl IntoResponse {
         .fetch_all(&Database::pool()),
     )
     .await
-    .map(|x| {
+    .map_or_default(|x| {
         x.into_iter()
             .map(|x| SimpleStop {
                 id: x.stop_id,
@@ -138,8 +137,7 @@ pub async fn get_stops(headers: HeaderMap) -> impl IntoResponse {
                 longitude: x.longitude.unwrap_or_default(),
             })
             .collect::<Vec<_>>()
-    })
-    .unwrap_or_default();
+    });
 
     JsonOrAccept(Versioned::new(1, stops), headers).into_response()
 }
@@ -276,7 +274,7 @@ pub async fn get_trips(headers: HeaderMap) -> impl IntoResponse {
         .fetch_all(&Database::pool()),
     )
     .await
-    .map(|rows| {
+    .map_or_default(|rows| {
         rows.into_iter()
             .filter_map(|row| {
                 Some(Trip {
@@ -300,8 +298,7 @@ pub async fn get_trips(headers: HeaderMap) -> impl IntoResponse {
                 })
             })
             .collect::<Vec<_>>()
-    })
-    .unwrap_or_default();
+    });
 
     JsonOrAccept(Versioned::new(1, trips), headers).into_response()
 }

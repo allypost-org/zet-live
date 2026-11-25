@@ -11,7 +11,11 @@ use tokio::sync::{Notify, watch};
 use tracing::{debug, trace, warn};
 
 use super::data::transit_realtime::FeedMessage;
-use crate::{admin, cli::Config, http_client::HTTP_CLIENT};
+use crate::{
+    admin,
+    cli::Config,
+    http_client::{HTTP_CLIENT, send_with_backoff},
+};
 
 static FEED: LazyLock<watch::Sender<Option<Arc<FeedMessage>>>> =
     LazyLock::new(|| watch::channel(None).0);
@@ -42,10 +46,7 @@ pub async fn fetch_feed() -> Result<FeedMessage, FetcherError> {
     debug!(url = ?url.as_str(), "Fetching feed");
 
     let start = Instant::now();
-    let response = HTTP_CLIENT
-        .get(url)
-        .timeout(Duration::from_secs(10))
-        .send()
+    let response = send_with_backoff(HTTP_CLIENT.get(url).timeout(Duration::from_secs(10)))
         .await
         .map_err(FetcherError::FetchError)?;
 

@@ -76,7 +76,7 @@ pub struct DataFetcherConfig {
     #[clap(
         long,
         value_parser = parse_span,
-        default_value = "2 seconds",
+        default_value = "12 seconds",
         env = "ZI_DATA_FETCH_INTERVAL"
     )]
     pub data_fetch_interval: jiff::Span,

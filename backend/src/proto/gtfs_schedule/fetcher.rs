@@ -147,12 +147,13 @@ async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> 
 
     debug!(url = ?url.as_str(), "Fetching metadata");
 
-    let response = crate::http_client::HTTP_CLIENT
-        .get(url)
-        .timeout(Duration::from_mins(1))
-        .send()
-        .await
-        .map_err(FetcherError::Fetch)?;
+    let response = crate::http_client::send_with_backoff(
+        crate::http_client::HTTP_CLIENT
+            .get(url)
+            .timeout(Duration::from_mins(1)),
+    )
+    .await
+    .map_err(FetcherError::Fetch)?;
 
     if let Err(e) = response.error_for_status_ref() {
         return Err(FetcherError::Fetch(e));
