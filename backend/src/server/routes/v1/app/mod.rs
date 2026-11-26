@@ -25,7 +25,6 @@ pub async fn get_version() -> impl IntoResponse {
             "version": ProjectConfig::app_version(),
             "built": ProjectConfig::build_date(),
             "id": id,
-            "frontendId": crate::server::routes::frontend::SpaAssets::version_id(),
         });
         let ret = ret.as_object_mut().expect("Value is object");
 
@@ -40,7 +39,13 @@ pub async fn get_version() -> impl IntoResponse {
         serde_json::json!(ret)
     });
 
-    ([(header::CACHE_CONTROL, "no-store")], Json(INFO.clone()))
+    let mut info = INFO.clone();
+    // Debug builds read frontend assets from disk, so a frontend rebuild can change this ID
+    // while the server runs.
+    info["frontendId"] =
+        serde_json::json!(crate::server::routes::frontend::SpaAssets::version_id());
+
+    ([(header::CACHE_CONTROL, "no-store")], Json(info))
 }
 
 fn encode_hex(data: &[u8]) -> String {
