@@ -41,6 +41,7 @@ mod capabilities;
 mod feed;
 mod feedback;
 mod gbfs;
+mod next_stop;
 mod schedule;
 mod settings;
 mod snapshot;
@@ -595,28 +596,11 @@ async fn process_feed(
                     return None;
                 }
 
-                // The GTFS-RT feed's first StopTimeUpdate may be for a stop
-                // the vehicle has already passed (feed lag). Skip any stops
-                // whose predicted arrival is more than 30s in the past so the
-                // frontend always highlights a genuinely upcoming stop.
-                // Also skip stops before the vehicle's current_stop_sequence
-                // from VehiclePosition, since those are definitely passed.
-                let now_secs = jiff::Timestamp::now().as_second();
-                let min_stop_seq = current_stop_sequences.get(&trip_id);
-                let first_stu = tu
-                    .stop_time_update
-                    .iter()
-                    .find(|stu| {
-                        let seq_ok = min_stop_seq
-                            .is_none_or(|&min| stu.stop_sequence.is_none_or(|seq| seq >= min));
-                        seq_ok
-                            && stu
-                                .arrival
-                                .as_ref()
-                                .and_then(|a| a.time)
-                                .is_none_or(|time| time >= now_secs - 30)
-                    })
-                    .or_else(|| tu.stop_time_update.last())?;
+                let first_stu = next_stop::select_next_stop(
+                    &tu.stop_time_update,
+                    current_stop_sequences.get(&trip_id).copied(),
+                    jiff::Timestamp::now().as_second(),
+                )?;
                 let first_stop_sequence = first_stu.stop_sequence?;
 
                 let next_stop = NextStopInfo {
