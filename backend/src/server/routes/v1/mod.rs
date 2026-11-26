@@ -26,7 +26,10 @@ use crate::{
     proto::{
         gbfs::fetcher::wait_for_gbfs_update,
         gtfs_realtime::{data::transit_realtime::FeedMessage, fetcher::subscribe_feed},
-        gtfs_schedule::data::trip_key,
+        gtfs_schedule::data::{
+            stop_bearing::{Bearing, load_stop_bearings},
+            trip_key,
+        },
     },
 };
 
@@ -405,6 +408,8 @@ struct ActiveStopsCache {
     schedule_generation: u64,
     ids: Vec<String>,
     simple: Vec<Vec<MixedValue>>,
+    /// `None` when the last load failed, so that the next rebuild tries again.
+    bearings: Option<Arc<HashMap<String, Bearing>>>,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -482,7 +487,8 @@ async fn process_feed(
                 let stops = Database::logged(
                     "active_stops",
                     sqlx::query!(
-                        "SELECT ids.stop_id AS \"stop_id!\", s.stop_name, s.longitude, s.latitude
+                        "SELECT ids.stop_id AS \"stop_id!\", s.stop_name, s.longitude, s.latitude,
+                                s.parent_station
                          FROM (
                              SELECT DISTINCT st.stop_id
                              FROM live_trips lt
@@ -501,15 +507,37 @@ async fn process_feed(
                         return;
                     }
                 };
+                let bearings = match active_stops_cache.as_ref() {
+                    Some(cache) if cache.schedule_generation == schedule_generation => {
+                        cache.bearings.clone()
+                    }
+                    _ => match load_stop_bearings().await {
+                        Ok(bearings) => Some(Arc::new(bearings)),
+                        Err(e) => {
+                            error!(?e, "Failed to load stop bearings");
+                            None
+                        }
+                    },
+                };
                 let ids = stops.iter().map(|stop| stop.stop_id.clone()).collect();
                 let simple = stops
                     .into_iter()
                     .filter_map(|stop| {
+                        let bearing = bearings
+                            .as_ref()
+                            .and_then(|bearings| bearings.get(&stop.stop_id))
+                            .map_or_else(MixedValue::null, |bearing| bearing.degrees().into());
+                        let parent_station = stop
+                            .parent_station
+                            .filter(|parent| !parent.is_empty())
+                            .map_or_else(MixedValue::null, MixedValue::from);
                         Some(vec![
                             stop.stop_id.into(),
                             stop.stop_name?.into(),
                             stop.latitude?.into(),
                             stop.longitude?.into(),
+                            parent_station,
+                            bearing,
                         ])
                     })
                     .collect();
@@ -518,6 +546,7 @@ async fn process_feed(
                     schedule_generation,
                     ids,
                     simple,
+                    bearings,
                 });
             }
             let Some(cache) = active_stops_cache.as_ref() else {

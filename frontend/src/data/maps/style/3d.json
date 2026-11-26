@@ -2943,35 +2943,128 @@
       }
     },
     {
+      "id": "route-stop-connector",
+      "type": "line",
+      "source": "route-stops",
+      "filter": ["==", ["get", "kind"], "connector"],
+      "layout": {
+        "line-cap": "round"
+      },
+      "paint": {
+        "line-color": "#000",
+        "line-width": {
+          "stops": [
+            [14, 2],
+            [20, 4]
+          ]
+        },
+        "line-dasharray": [1, 2],
+        "line-opacity": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          13,
+          0,
+          15,
+          ["case", ["boolean", ["get", "active"], true], 0.7, 0.3]
+        ]
+      }
+    },
+    {
       "id": "route-stop-dot",
       "type": "circle",
       "source": "route-stops",
+      "filter": ["all", ["==", ["get", "kind"], "stop"], ["!", ["has", "bearing"]]],
       "paint": {
         "circle-radius": {
           "stops": [
-            [12, 2],
-            [20, 5]
+            [12, 4],
+            [20, 10]
           ]
         },
         "circle-color": "#000",
-        "circle-opacity": [
-          "case",
-          ["boolean", ["get", "active"], true],
-          0.67,
-          0.22
-        ]
+        "circle-opacity": ["case", ["boolean", ["get", "active"], true], 1, 0.3],
+        "circle-stroke-color": "#fff",
+        "circle-stroke-width": {
+          "stops": [
+            [12, 1.2],
+            [20, 3]
+          ]
+        },
+        "circle-stroke-opacity": ["case", ["boolean", ["get", "active"], true], 1, 0.3]
+      }
+    },
+    {
+      "id": "route-stop-arrow",
+      "type": "symbol",
+      "source": "route-stops",
+      "filter": ["all", ["==", ["get", "kind"], "stop"], ["has", "bearing"]],
+      "layout": {
+        "icon-image": "stop-arrow",
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.4, 20, 1],
+        "icon-rotate": ["get", "bearing"],
+        "icon-rotation-alignment": "map",
+        "icon-pitch-alignment": "map",
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      },
+      "paint": {
+        "icon-opacity": ["case", ["boolean", ["get", "active"], true], 1, 0.3]
       }
     },
     {
       "id": "route-stops-label",
       "type": "symbol",
       "source": "route-stops",
+      "filter": ["all", ["==", ["get", "kind"], "stop"], ["==", ["get", "labelled"], true]],
       "layout": {
         "text-font": ["IosevkAllyP Bold"],
         "text-field": ["get", "name"],
         "text-variable-anchor": ["top", "bottom", "left", "right"],
         "text-radial-offset": 0.5,
         "text-justify": "auto",
+        "text-size": ["interpolate", ["linear"], ["zoom"], 0, 7, 10, 9, 12, 13, 22, 30]
+      },
+      "paint": {
+        "text-color": ["case", ["boolean", ["get", "isNext"]], "#155dfc", "#000"],
+        "text-halo-color": "#fff",
+        "text-halo-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10,
+          ["case", ["boolean", ["get", "isNext"]], 2, 1],
+          14,
+          ["case", ["boolean", ["get", "isNext"]], 4, 3],
+          18,
+          ["case", ["boolean", ["get", "isNext"]], 5, 3],
+          22,
+          ["case", ["boolean", ["get", "isNext"]], 8, 6]
+        ],
+        "text-halo-blur": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10,
+          ["case", ["boolean", ["get", "isNext"]], 0, 0],
+          14,
+          ["case", ["boolean", ["get", "isNext"]], 1, 2],
+          18,
+          ["case", ["boolean", ["get", "isNext"]], 1, 2],
+          22,
+          ["case", ["boolean", ["get", "isNext"]], 2, 3]
+        ]
+      }
+    },
+    {
+      "id": "route-station-label",
+      "type": "symbol",
+      "source": "route-stops",
+      "filter": ["==", ["get", "kind"], "station"],
+      "layout": {
+        "text-font": ["IosevkAllyP Bold"],
+        "text-field": ["get", "name"],
+        "text-anchor": "center",
         "text-size": ["interpolate", ["linear"], ["zoom"], 0, 7, 10, 9, 12, 13, 22, 30]
       },
       "paint": {

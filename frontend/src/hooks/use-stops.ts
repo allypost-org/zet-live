@@ -22,6 +22,7 @@ import {
 import type { StopsUpdateResponse } from "@/app/entity/shared";
 import { buildRouteDisplayedStops, patchTripStopTimesFromVehicle } from "@/app/trip-stop-times";
 import { stopDeparturesEnabled } from "@/feature-flags-store";
+import { createMoveIntervalState, observeVehiclePositions } from "@/app/vehicle-move-interval";
 import { toast } from "sonner";
 
 function vehicleMapKey(id: string) {
@@ -64,6 +65,8 @@ export function handleStopsUpdate(response: StopsUpdateResponse) {
     displayedStops: useGrouped ? response.grouped : state.displayedStops,
   });
 }
+
+const moveIntervalState = createMoveIntervalState();
 
 export function processMessage(message: V1Message) {
   if (typeof message.d === "object" && "vehicles" in message.d) {
@@ -120,8 +123,15 @@ export function processMessage(message: V1Message) {
       }
     }
 
+    const vehicleMoveIntervals = observeVehiclePositions(
+      moveIntervalState,
+      Array.from(newMap.values(), (v) => ({ id: v.id, lat: v.lat, lng: v.lng })),
+      performance.now(),
+    );
+
     useStore.setState({
       vehicles: newMap,
+      vehicleMoveIntervals,
       vehicleBounds: [
         [minLng, minLat],
         [maxLng, maxLat],

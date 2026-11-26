@@ -5,6 +5,9 @@ export type StopData = {
   name: string;
   lat: number;
   lng: number;
+  parentStation: string | null;
+  /** Compass bearing of travel at the stop in degrees, 0 is north. */
+  bearing: number | null;
 };
 
 export type GroupedStop = {

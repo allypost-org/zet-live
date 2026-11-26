@@ -6,7 +6,7 @@ use tracing::error;
 
 use crate::{
     database::Database,
-    entity::util::versioned::Versioned,
+    entity::util::{mixed_value::MixedValue, versioned::Versioned},
     proto::gtfs_schedule::data::{Route, Shape, SimpleStop, Trip, trip_key},
     server::{error::ApiError, request::JsonOrAccept},
 };
@@ -180,17 +180,34 @@ pub async fn get_stop(headers: HeaderMap, Path(id): Path<String>) -> impl IntoRe
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SimpleStopsResponse<'a> {
+    simple_stops: &'a [Vec<MixedValue>],
+}
+
+/// Serializes the rows directly. A `serde_json::Value` would change each
+/// `MixedValue::Null` to a unit value, and CBOR encodes unit as `[]`, not `null`.
 pub async fn get_simple_stops(headers: HeaderMap) -> impl IntoResponse {
+    let simple_stops = crate::server::routes::v1::SIMPLE_STOPS.read().await;
     JsonOrAccept(
         Versioned::new(
             1,
-            serde_json::json!({
-                "simpleStops": *crate::server::routes::v1::SIMPLE_STOPS.read().await,
-            }),
+            SimpleStopsResponse {
+                simple_stops: &simple_stops,
+            },
         ),
         headers,
     )
     .into_response()
+}
+
+/// A typed response, so that a `None` arrival time encodes as `null` in CBOR.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StopTripsResponse {
+    stop_trips: Vec<String>,
+    arrival_times: Vec<StopArrivalTime>,
 }
 
 #[derive(Deserialize)]
@@ -206,10 +223,10 @@ pub async fn get_stop_trips(
         return JsonOrAccept(
             Versioned::new(
                 1,
-                serde_json::json!({
-                    "stopTrips": Vec::<String>::new(),
-                    "arrivalTimes": Vec::<StopArrivalTime>::new(),
-                }),
+                StopTripsResponse {
+                    stop_trips: Vec::new(),
+                    arrival_times: Vec::new(),
+                },
             ),
             headers,
         )
@@ -242,10 +259,10 @@ pub async fn get_stop_trips(
     JsonOrAccept(
         Versioned::new(
             1,
-            serde_json::json!({
-                "stopTrips": stop_trips,
-                "arrivalTimes": arrival_times,
-            }),
+            StopTripsResponse {
+                stop_trips,
+                arrival_times,
+            },
         ),
         headers,
     )

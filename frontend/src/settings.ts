@@ -5,6 +5,8 @@ export type MapStyleId = "3d" | "3d.dark" | "flat" | "satellite";
 export type MapThemeMode = "device" | "time" | "manual";
 export type UiThemeMode = "device" | "time" | "map" | "manual";
 export type UiTheme = "light" | "dark";
+/** How vehicles move to a new position: move smoothly, or jump and show a trail. */
+export type VehicleMotion = "animate" | "trail";
 
 const DEFAULTS = {
   mapStyle: "3d" as MapStyleId,
@@ -15,6 +17,7 @@ const DEFAULTS = {
   showGbfsStations: true,
   showBuses: true,
   showTrams: true,
+  vehicleMotion: "animate" as VehicleMotion,
 };
 
 export type Settings = typeof DEFAULTS & {
@@ -49,6 +52,9 @@ function loadSettings(): Settings {
             : DEFAULTS.showGbfsStations,
         showBuses: typeof parsed.showBuses === "boolean" ? parsed.showBuses : DEFAULTS.showBuses,
         showTrams: typeof parsed.showTrams === "boolean" ? parsed.showTrams : DEFAULTS.showTrams,
+        vehicleMotion: isValidVehicleMotion(parsed.vehicleMotion)
+          ? parsed.vehicleMotion
+          : DEFAULTS.vehicleMotion,
         _settingsOpen: false,
       };
     }
@@ -72,6 +78,10 @@ function isValidUiThemeMode(value: unknown): value is UiThemeMode {
 
 function isValidUiTheme(value: unknown): value is UiTheme {
   return value === "light" || value === "dark";
+}
+
+function isValidVehicleMotion(value: unknown): value is VehicleMotion {
+  return value === "animate" || value === "trail";
 }
 
 function persist(settings: Settings) {

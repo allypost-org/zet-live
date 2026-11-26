@@ -56,6 +56,8 @@ export type StopSelection = {
 
 export type StoreState = {
   vehicles: Map<string, VehicleV1>;
+  /** Expected ms until the next position change, by vehicle ID. */
+  vehicleMoveIntervals: Map<string, number>;
   vehicleBounds: [[number, number], [number, number]];
 
   simpleStops: Record<string, StopV1>;
@@ -135,6 +137,7 @@ function buildStopDisplayedStops(
 export const useStore = create<StoreState>()(
   subscribeWithSelector((set, get) => ({
     vehicles: new Map(),
+    vehicleMoveIntervals: new Map(),
     vehicleBounds: DEFAULT_BOUNDS,
 
     simpleStops: {},

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT ids.stop_id AS \"stop_id!\", s.stop_name, s.longitude, s.latitude\n                         FROM (\n                             SELECT DISTINCT st.stop_id\n                             FROM live_trips lt\n                             JOIN gtfs_stop_times st ON st.trip_key = lt.trip_key\n                         ) ids\n                         LEFT JOIN gtfs_stops s ON s.stop_id = ids.stop_id\n                         ORDER BY ids.stop_id",
+  "query": "SELECT ids.stop_id AS \"stop_id!\", s.stop_name, s.longitude, s.latitude,\n                                s.parent_station\n                         FROM (\n                             SELECT DISTINCT st.stop_id\n                             FROM live_trips lt\n                             JOIN gtfs_stop_times st ON st.trip_key = lt.trip_key\n                         ) ids\n                         LEFT JOIN gtfs_stops s ON s.stop_id = ids.stop_id\n                         ORDER BY ids.stop_id",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,17 @@
             "name": "latitude"
           }
         }
+      },
+      {
+        "ordinal": 4,
+        "name": "parent_station",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "parent_station"
+          }
+        }
       }
     ],
     "parameters": {
@@ -55,8 +66,9 @@
       false,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "0437cdb5155d04619dd30ea699fadac4cbf8a0cff648c9d71c8cd555f92e4913"
+  "hash": "353714aa7b875a4dcbfe7a2f17c9c7b98dd22a16b9772fd88fe132b9c568d044"
 }

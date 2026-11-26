@@ -1,0 +1,69 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT u.stop_id AS \"stop_id!\", u.shape_id AS \"shape_id!\", u.trips AS \"trips!\",\n                      s.latitude AS \"latitude!\", s.longitude AS \"longitude!\"\n               FROM (\n                   SELECT st.stop_id, t.shape_id, COUNT(*) AS trips\n                   FROM gtfs_stop_times st\n                   JOIN gtfs_trips t ON t.trip_id = st.trip_id\n                   WHERE t.shape_id IS NOT NULL\n                   GROUP BY st.stop_id, t.shape_id\n               ) u\n               JOIN gtfs_stops s ON s.stop_id = u.stop_id\n               WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "stop_id!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "stop_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "shape_id!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "shape_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "trips!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "latitude!",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "latitude"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "longitude!",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "longitude"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      true,
+      null,
+      true,
+      true
+    ]
+  },
+  "hash": "1524d13024f82bf3d4850c2857dd2c93e22a52650dd32d1e4b8d93401802a2ac"
+}

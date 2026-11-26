@@ -8,6 +8,7 @@ import {
   type MapThemeMode,
   type UiThemeMode,
   type UiTheme,
+  type VehicleMotion,
 } from "@/settings";
 import { openFeedback } from "@/feedback-store";
 import type { ReactNode } from "react";
@@ -33,6 +34,11 @@ const UI_THEME_MODES: { id: UiThemeMode; label: string; description: string }[] 
   { id: "manual", label: "Manual", description: "Choose yourself" },
 ];
 
+const VEHICLE_MOTIONS: { id: VehicleMotion; label: string; description: string }[] = [
+  { id: "animate", label: "Animate", description: "Move smoothly when zoomed in" },
+  { id: "trail", label: "Trail", description: "Jump and show the last move" },
+];
+
 const UI_THEMES: { id: UiTheme; label: string }[] = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
@@ -48,6 +54,7 @@ export function SettingsModal() {
   const showGbfsStations = useSetting("showGbfsStations");
   const showBuses = useSetting("showBuses");
   const showTrams = useSetting("showTrams");
+  const vehicleMotion = useSetting("vehicleMotion");
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -242,6 +249,26 @@ export function SettingsModal() {
                             updateSetting("showGbfsStations", !showGbfsStations);
                           }}
                         />
+                      </div>
+                    ),
+                  },
+                  {
+                    title: "Vehicle Movement",
+                    description:
+                      "How vehicles move to a new position. Zoomed out or with reduced motion, vehicles always jump and show a trail.",
+                    body: (
+                      <div className="grid grid-cols-2 gap-2">
+                        {VEHICLE_MOTIONS.map((m) => (
+                          <ItemSelect
+                            key={m.id}
+                            selected={vehicleMotion === m.id}
+                            title={m.label}
+                            description={m.description}
+                            onSelect={() => {
+                              updateSetting("vehicleMotion", m.id);
+                            }}
+                          />
+                        ))}
                       </div>
                     ),
                   },

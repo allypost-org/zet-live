@@ -12,6 +12,7 @@ use crate::database::Database;
 pub mod route;
 pub mod shape;
 pub mod stop;
+pub mod stop_bearing;
 pub mod trip;
 
 pub use route::*;

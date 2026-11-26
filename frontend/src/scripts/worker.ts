@@ -103,11 +103,13 @@ function computeBounds(stops: StopData[]): [[number, number], [number, number]] 
 
 function extractStopsFromMessage(data: V1Message["d"]): StopData[] | null {
   if (typeof data === "object" && "simpleStops" in data) {
-    return (data.simpleStops as (string | number)[][]).map((s) => ({
-      id: String(s[0]),
-      name: String(s[1]),
-      lat: Number(s[2]),
-      lng: Number(s[3]),
+    return data.simpleStops.map(([id, name, lat, lng, parentStation, bearing]) => ({
+      id,
+      name,
+      lat,
+      lng,
+      parentStation,
+      bearing,
     }));
   }
   return null;

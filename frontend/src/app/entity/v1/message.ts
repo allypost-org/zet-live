@@ -47,7 +47,18 @@ export const v1MessageSchema = versionedSchema(
     )
     .or(
       z.object({
-        simpleStops: z.array(z.tuple([z.string(), z.string(), z.number(), z.number()])),
+        simpleStops: z.array(
+          z
+            .tuple([
+              z.string(),
+              z.string(),
+              z.number(),
+              z.number(),
+              z.string().nullable(),
+              z.number().nullable(),
+            ])
+            .rest(z.unknown()),
+        ),
       }),
     )
     .or(

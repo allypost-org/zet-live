@@ -24,7 +24,7 @@ function normalizeAngle(a: number): number {
   return a;
 }
 
-function eggRadius(
+export function eggRadius(
   angle: number,
   semiW: number,
   semiH: number,

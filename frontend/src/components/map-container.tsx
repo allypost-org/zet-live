@@ -38,8 +38,21 @@ import {
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
 import { boardingLocationLabel } from "@/app/boarding-location";
+import { groupStopsIntoStations } from "@/app/stop-stations";
+import type { StopV1 } from "@/app/entity/v1/stop";
 import { useFeatureFlag } from "@/feature-flags-store";
 import { useSelectedStopTripIds } from "@/hooks/use-selected-stop-trips";
+import { ensureStopArrowIcons } from "@/utils/stop-icons";
+import { useAnimatedVehicleSource, useVehicleMotion } from "@/hooks/use-animated-vehicle-source";
+import { DEFAULT_MOVE_INTERVAL_MS } from "@/app/vehicle-move-interval";
+
+/** Layers that draw one stop. A click on them selects that stop. */
+const STOP_MARKER_LAYER_IDS = ["route-stop-dot", "route-stop-arrow"];
+
+/** Only include `bearing` when it is known: the style filters use `has`. */
+function bearingProperty(bearing: number | null | undefined) {
+  return bearing === null || bearing === undefined ? {} : { bearing };
+}
 
 /** Zoom at and above which all stops are shown (not just active ones). */
 const ALL_STOPS_MIN_ZOOM = 15;
@@ -247,12 +260,15 @@ export function MapContainer() {
   const selection = useStore((s) => s.selection);
   const vehicleSelection = useStore((s) => s.vehicleSelection);
   const stopSelection = useStore((s) => s.stopSelection);
+  const vehicleMoveIntervals = useStore((s) => s.vehicleMoveIntervals);
   const deltaMoveLines = useStore((s) => s.deltaMoveLines);
   const displayedStops = useStore((s) => s.displayedStops);
   const stopsGroupedAll = useStore((s) => s.stopsGroupedAll);
   const activeStopIds = useStore((s) => s.activeStopIds);
+  const simpleStops = useStore((s) => s.simpleStops);
   const stopBoardFlag = useFeatureFlag("stop_departures");
   const [zoom, setZoom] = useState(12);
+  const vehicleMotion = useVehicleMotion(zoom);
   const showAllStops =
     stopBoardFlag && selection === null && zoom >= ALL_STOPS_MIN_ZOOM && stopsGroupedAll.length > 0;
   const baseStops = showAllStops ? stopsGroupedAll : displayedStops;
@@ -300,7 +316,7 @@ export function MapContainer() {
       }
 
       const stopFeature =
-        e.features?.find((x) => x.layer.id === "route-stop-dot") ??
+        e.features?.find((x) => STOP_MARKER_LAYER_IDS.includes(x.layer.id)) ??
         e.features?.find((x) => x.source === "route-stops");
       if (stopFeature) {
         const stopIds = JSON.parse(
@@ -350,6 +366,7 @@ export function MapContainer() {
     const map = mapRef.current?.getMap();
     if (!map) return;
     map.setMaxBounds(useStore.getState().maxBounds);
+    ensureStopArrowIcons(map);
     if (map.hasImage("arrow-head")) return;
     let cancelled = false;
     void (async () => {
@@ -384,11 +401,18 @@ export function MapContainer() {
 
     const offset = calculateLatOffset(mapRef.current?.getMap());
 
-    map.easeTo({
-      center: [vehicle.lng, vehicle.lat - offset],
-      duration: 500,
-    });
-  }, [selection, vehicleSelection, vehicles]);
+    const center: [number, number] = [vehicle.lng, vehicle.lat - offset];
+    map.easeTo(
+      vehicleMotion === "animate"
+        ? // Linear, the same as the vehicle, so that the vehicle stays in the centre.
+          {
+            center,
+            duration: vehicleMoveIntervals.get(selection.id) ?? DEFAULT_MOVE_INTERVAL_MS,
+            easing: (t) => t,
+          }
+        : { center, duration: 500 },
+    );
+  }, [selection, vehicleSelection, vehicles, vehicleMoveIntervals, vehicleMotion]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -396,12 +420,14 @@ export function MapContainer() {
       return;
     }
 
-    map.on("mouseenter", "route-stops-label", () => {
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", "route-stops-label", () => {
-      map.getCanvas().style.cursor = "";
-    });
+    for (const layerId of ["route-stops-label", "route-station-label", ...STOP_MARKER_LAYER_IDS]) {
+      map.on("mouseenter", layerId, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", layerId, () => {
+        map.getCanvas().style.cursor = "";
+      });
+    }
 
     map.on("mouseenter", "vehicle-markers", () => {
       map.getCanvas().style.cursor = "pointer";
@@ -473,7 +499,6 @@ export function MapContainer() {
     ensureVehicleIcons(map, vehicleIconsToEnsure);
   }, [iconsReady, vehicleIconsToEnsure]);
 
-  const vehiclesRafId = useRef<number | null>(null);
   const vehiclesGeoJson = useMemo(
     () =>
       buildVehiclesGeoJson(
@@ -484,57 +509,93 @@ export function MapContainer() {
       ),
     [vehicles, selectedVehicleId, selectedStopTripIds, searchMatchedVehicleIds],
   );
-  useEffect(() => {
-    if (!iconsReady) return;
-    cancelAnimationOrIdleCallback(vehiclesRafId.current);
-    const data = vehiclesGeoJson;
-    vehiclesRafId.current = appRequestAnimationFrame(() => {
-      vehiclesRafId.current = null;
-      const map = mapRef.current?.getMap();
-      if (!map) return;
-      ensureVehicleIcons(
-        map,
-        data.features
-          .map((f) => {
-            const props = f.properties as { iconName: string };
-            const match = /^vehicle-(red|blue)-r([^-]+)-b(\d+|none)$/.exec(props.iconName);
-            if (!match) return null;
-            return {
-              routeId: decodeURIComponent(match[2]!),
-              color: match[1],
-              qBearing: match[3] === "none" ? null : Number(match[3]),
-            };
-          })
-          .filter((d): d is VehicleIconDescriptor => d !== null),
-      );
-      imperativeSetData(mapRef, "vehicles", data);
-    });
-    return () => {
-      cancelAnimationOrIdleCallback(vehiclesRafId.current);
-    };
-  }, [iconsReady, vehiclesGeoJson]);
+  useAnimatedVehicleSource(
+    mapRef,
+    "vehicles",
+    vehiclesGeoJson,
+    vehicleMoveIntervals,
+    iconsReady,
+    vehicleMotion,
+  );
 
   const deltaMoveFeatures = useMemo(() => buildDeltaMoveFeatures(deltaMoveLines), [deltaMoveLines]);
   useRafSetData(mapRef, "delta-move-lines", deltaMoveFeatures, styleReady);
+  const trailVisible = vehicleMotion === "trail" && !searchActive && vehiclesLayerVisible;
 
   const routeStopsFeatures = useMemo(() => {
     const filtered = searchMatchedStopIds
       ? baseStops.filter((s) => s.ids.some((id) => searchMatchedStopIds.has(id)))
       : baseStops;
     const hasActive = activeStopIds.size > 0;
+    const isActive = (ids: string[]) =>
+      showAllStops && hasActive ? ids.some((id) => activeStopIds.has(id)) : true;
+
+    if (selection === null) {
+      const stops = filtered
+        .flatMap((group) => group.ids.map((id) => simpleStops[id]))
+        .filter((stop): stop is StopV1 => stop !== undefined);
+      return {
+        type: "FeatureCollection" as const,
+        features: groupStopsIntoStations(stops).flatMap((station) => {
+          const ids = station.stops.map((stop) => stop.id);
+          const single = station.stops.length === 1;
+          const stopFeatures = station.stops.map((stop) => ({
+            type: "Feature" as const,
+            properties: {
+              kind: "stop",
+              labelled: single,
+              name: station.name,
+              isNext: false,
+              ids: JSON.stringify([stop.id]),
+              active: isActive([stop.id]),
+              ...bearingProperty(stop.bearing),
+            },
+            geometry: { type: "Point" as const, coordinates: [stop.lng, stop.lat] },
+          }));
+          if (single) return stopFeatures;
+          const center = [station.lng, station.lat];
+          return [
+            ...station.stops.map((stop) => ({
+              type: "Feature" as const,
+              properties: { kind: "connector", active: isActive([stop.id]) },
+              geometry: {
+                type: "LineString" as const,
+                coordinates: [[stop.lng, stop.lat], center],
+              },
+            })),
+            ...stopFeatures,
+            {
+              type: "Feature" as const,
+              properties: {
+                kind: "station",
+                name: station.name,
+                isNext: false,
+                ids: JSON.stringify(ids),
+                active: isActive(ids),
+              },
+              geometry: { type: "Point" as const, coordinates: center },
+            },
+          ];
+        }),
+      };
+    }
+
     return {
       type: "FeatureCollection" as const,
       features: filtered.map((stop) => ({
         type: "Feature" as const,
         properties: {
+          kind: "stop",
+          labelled: true,
           name:
-            stopBoardFlag && selection?.type === "stop" && selection.ids.length > 1
+            stopBoardFlag && selection.type === "stop" && selection.ids.length > 1
               ? `${boardingLocationLabel(selection.ids.indexOf(stop.ids[0]!))} · ${stop.name}`
               : stop.name,
           focused: focusedStopId !== null && stop.ids.includes(focusedStopId),
           ids: JSON.stringify(stop.ids),
           isNext: nextStopId !== null && stop.ids.includes(nextStopId),
-          active: showAllStops && hasActive ? stop.ids.some((id) => activeStopIds.has(id)) : true,
+          active: isActive(stop.ids),
+          ...bearingProperty(stop.ids.length === 1 ? simpleStops[stop.ids[0]!]?.bearing : null),
         },
         geometry: {
           type: "Point" as const,
@@ -544,6 +605,7 @@ export function MapContainer() {
     };
   }, [
     baseStops,
+    simpleStops,
     nextStopId,
     searchMatchedStopIds,
     activeStopIds,
@@ -592,6 +654,8 @@ export function MapContainer() {
     if (!map) return;
     map.setLayoutProperty("route-stops-label", "text-allow-overlap", isFollowingSomething);
     map.setLayoutProperty("route-stops-label", "text-ignore-placement", isFollowingSomething);
+    map.setLayoutProperty("route-station-label", "text-allow-overlap", isFollowingSomething);
+    map.setLayoutProperty("route-station-label", "text-ignore-placement", isFollowingSomething);
   }, [isFollowingSomething]);
 
   const vehicleMarkerLayout: Record<string, unknown> = useMemo(
@@ -624,6 +688,9 @@ export function MapContainer() {
           ref={mapRef}
           mapStyle={mapStyle}
           transformRequest={transformRequest}
+          // Each vehicle update places the symbols again. A fade makes the map
+          // draw every frame while it runs, so the map draws almost all the time.
+          fadeDuration={0}
           initialViewState={{
             longitude: 16,
             latitude: 45.8,
@@ -634,7 +701,8 @@ export function MapContainer() {
           antialias
           interactiveLayerIds={[
             "route-stops-label",
-            "route-stop-dot",
+            "route-station-label",
+            ...STOP_MARKER_LAYER_IDS,
             "focused-boarding-location",
             "vehicle-markers",
             "gbfs-station-markers",
@@ -733,7 +801,7 @@ export function MapContainer() {
               layout={{
                 "line-join": "round",
                 "line-cap": "round",
-                visibility: searchActive || !vehiclesLayerVisible ? "none" : "visible",
+                visibility: trailVisible ? "visible" : "none",
               }}
             />
             <Layer
@@ -748,7 +816,7 @@ export function MapContainer() {
                 "icon-image": "arrow-head",
                 "text-ignore-placement": true,
                 "icon-size": 0.25,
-                visibility: searchActive || !vehiclesLayerVisible ? "none" : "visible",
+                visibility: trailVisible ? "visible" : "none",
               }}
             />
           </Source>
