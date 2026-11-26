@@ -13,7 +13,7 @@ import { DEFAULT_MOVE_INTERVAL_MS } from "@/app/vehicle-move-interval";
  * Below this zoom, vehicles move by only a few pixels, so the trail mode is
  * used. This also prevents expensive updates when most vehicles are visible.
  */
-const MIN_ANIMATED_ZOOM = 14;
+const MIN_ANIMATED_ZOOM = 13;
 
 /** A move longer than this is a jump in the data, so the vehicle does not animate. */
 const MAX_ANIMATED_MOVE_DEGREES = 0.02;
