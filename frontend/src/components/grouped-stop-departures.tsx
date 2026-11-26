@@ -1,3 +1,4 @@
+import { useT } from "@/i18n";
 import { useLayoutEffect, useRef } from "react";
 import { boardingLocationLabel } from "@/app/boarding-location";
 import { DeparturesBoard } from "@/components/departures-board";
@@ -21,12 +22,13 @@ function BoardingLocationHeading({
   compact: boolean;
 }) {
   const focusStop = useStore((s) => s.focusStop);
+  const t = useT();
   const destinations = compact ? board.destinations.slice(0, 2) : board.destinations;
   return (
     <div
       className={"flex items-start gap-2 px-4" + (compact ? " cursor-pointer" : "")}
       role={compact ? "button" : undefined}
-      aria-label={compact ? `View all departures for boarding location ${label}` : undefined}
+      aria-label={compact ? t("departures.viewAllFor", { label }) : undefined}
       onClick={
         compact
           ? () => {
@@ -41,8 +43,8 @@ function BoardingLocationHeading({
       <div className="min-w-0 space-y-1">
         <h2 className="text-on-surface text-sm font-bold">
           {board.destinations.length > 0
-            ? `${destinations.join(" · ")}${compact && board.destinations.length > 2 ? ` + ${board.destinations.length - 2}` : ""}`
-            : `Boarding location ${label}`}
+            ? `${destinations.join(" \u00b7 ")}${compact && board.destinations.length > 2 ? ` + ${board.destinations.length - 2}` : ""}`
+            : t("departures.boardingLocation", { label })}
         </h2>
         {board.routes.length > 1 ? (
           <div className="flex flex-wrap gap-1">
@@ -59,6 +61,7 @@ function BoardingLocationHeading({
 export function GroupedStopDepartures({ stopSelection, onVehicleClick }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const focusStop = useStore((s) => s.focusStop);
+  const t = useT();
   const { departureBoards, focusedStopId } = stopSelection;
   const boardIds = departureBoards.map((board) => board.stopId).join(",");
   const grouped = departureBoards.length > 1;
@@ -80,7 +83,7 @@ export function GroupedStopDepartures({ stopSelection, onVehicleClick }: Props) 
             focusStop(null);
           }}
         >
-          ‹ All boarding locations
+          &lsaquo; {t("departures.allBoardingLocations")}
         </button>
       ) : null}
       {boards.map((board) => {
@@ -103,7 +106,9 @@ export function GroupedStopDepartures({ stopSelection, onVehicleClick }: Props) 
           <section
             key={board.stopId}
             data-stop-id={board.stopId}
-            aria-label={grouped ? `Boarding location ${label}` : "Departures"}
+            aria-label={
+              grouped ? t("departures.boardingLocation", { label }) : t("departures.title")
+            }
             className="space-y-2"
           >
             {grouped ? (
@@ -120,13 +125,13 @@ export function GroupedStopDepartures({ stopSelection, onVehicleClick }: Props) 
             {preview ? (
               <button
                 type="button"
-                aria-label={`View all departures for boarding location ${label}`}
+                aria-label={t("departures.viewAllFor", { label })}
                 className="text-primary -mt-4 min-h-12 px-4 text-left text-sm font-medium"
                 onClick={() => {
                   focusStop(board.stopId);
                 }}
               >
-                View all departures ›
+                {t("departures.viewAll")} &rsaquo;
               </button>
             ) : null}
           </section>

@@ -24,6 +24,7 @@ import { buildRouteDisplayedStops, patchTripStopTimesFromVehicle } from "@/app/t
 import { stopDeparturesEnabled } from "@/feature-flags-store";
 import { createMoveIntervalState, observeVehiclePositions } from "@/app/vehicle-move-interval";
 import { toast } from "sonner";
+import { getT } from "@/i18n";
 
 function vehicleMapKey(id: string) {
   return `vehicle-${id}`;
@@ -234,7 +235,7 @@ export async function fetchFollowingRoute(tripId: string) {
     const isNotFound = result.error.status === 404;
 
     if (!isNotFound) {
-      toast.error("Failed to load trip info", { description: error });
+      toast.error(getT()("stops.toast.loadTripFailed"), { description: error });
     }
 
     const state = useStore.getState();
@@ -256,7 +257,7 @@ export async function fetchFollowingRoute(tripId: string) {
     patchVehicleSelection({
       route: null,
       tripStopTimes: null,
-      fetchError: isNotFound ? "Could not find full stop list.\nThis is a temporary issue." : error,
+      fetchError: isNotFound ? { key: "stops.tripFetchError" } : error,
     });
     return;
   }
@@ -264,9 +265,6 @@ export async function fetchFollowingRoute(tripId: string) {
   const shape = result.data;
   const simpleStops = useStore.getState().simpleStops;
   const tripStopTimes = shape.d.stopTimes;
-  const partialNotice = shape.d.partial
-    ? "No published schedule for this trip — showing real-time data only."
-    : null;
 
   useStore.setState({
     displayedStops: buildRouteDisplayedStops(tripStopTimes, simpleStops),
@@ -274,7 +272,7 @@ export async function fetchFollowingRoute(tripId: string) {
   patchVehicleSelection({
     route: shape.d.route,
     tripStopTimes,
-    fetchError: partialNotice,
+    fetchError: shape.d.partial ? { key: "stops.tripPartialNotice" } : null,
   });
 }
 
@@ -341,7 +339,7 @@ async function refreshStopArrivalTimes(stopIds: string[]) {
     if (result.error.status === 404) {
       patchStopSelection({ fetchError: result.error.error });
     } else {
-      toast.error("Failed to refresh arrivals", { description: result.error.error });
+      toast.error(getT()("stops.toast.refreshArrivalsFailed"), { description: result.error.error });
     }
     return;
   }
@@ -406,7 +404,9 @@ async function loadStopDepartureBoards(stopIds: string[], signal: AbortSignal, s
       patchStopSelection({ departureBoards, tripIds });
       if (result.error && !silent && !notified && result.error.status !== 404) {
         notified = true;
-        toast.error("Failed to load departures", { description: result.error.error });
+        toast.error(getT()("stops.toast.loadDeparturesFailed"), {
+          description: result.error.error,
+        });
       }
     }),
   );
@@ -457,7 +457,7 @@ export async function fetchStopTrips(stopIds: string[]) {
     if (result.error.status === 404) {
       patchStopSelection({ fetchError: result.error.error });
     } else {
-      toast.error("Failed to load stop trips", { description: result.error.error });
+      toast.error(getT()("stops.toast.loadTripsFailed"), { description: result.error.error });
     }
     return;
   }

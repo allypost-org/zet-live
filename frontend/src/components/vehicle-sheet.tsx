@@ -6,7 +6,8 @@ import {
   appRequestAnimationFrame,
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
-import { formatMinutesFromNow } from "@/utils/time";
+import { formatMinutesFromNow, useDateTimeFormatter } from "@/utils/time";
+import { renderText, useT, type UiText } from "@/i18n";
 import { CenterIcon, ShareIcon, SheetActions, shareSheetLink } from "@/components/sheet-actions";
 
 type Props = {
@@ -14,7 +15,7 @@ type Props = {
   displayedStops: { name: string; ids: string[]; stopSequence?: number }[];
   nextStopIndex: number;
   tripStopTimes: TripStopTimeEntry[] | null;
-  tripFetchError: string | null;
+  tripFetchError: UiText | null;
   followEnabled: boolean;
   onToggleFollow: () => void;
   onLocate: () => void;
@@ -32,6 +33,8 @@ export function VehicleSheet({
   onLocate,
   onStopClick,
 }: Props) {
+  const t = useT();
+  const format = useDateTimeFormatter();
   const stopListRef = useRef<HTMLUListElement>(null);
   const nextStopRef = useRef<HTMLLIElement>(null);
   const stopBadges = useMemo(() => {
@@ -54,11 +57,11 @@ export function VehicleSheet({
 
       return {
         iso: at.toISOString(),
-        locale: at.toLocaleString(),
+        formatted: format.dateTime(at),
         fromNow: formatMinutesFromNow(at),
       };
     });
-  }, [displayedStops, nextStopIndex, tripStopTimes, vehicle.nextStopArrivalTime]);
+  }, [displayedStops, nextStopIndex, tripStopTimes, vehicle.nextStopArrivalTime, format]);
 
   useEffect(() => {
     const list = stopListRef.current;
@@ -109,7 +112,7 @@ export function VehicleSheet({
               <line x1="12" y1="9" x2="12" y2="13" />
               <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
-            <span className="whitespace-pre-wrap">{tripFetchError}</span>
+            <span className="whitespace-pre-wrap">{renderText(tripFetchError, t)}</span>
           </div>
         ) : null}
         <ul ref={stopListRef} className="bottom-vehicle-stop-list space-y-0.5">
@@ -147,7 +150,7 @@ export function VehicleSheet({
                 {arrivalTime && (
                   <time
                     dateTime={arrivalTime.iso}
-                    title={arrivalTime.locale}
+                    title={arrivalTime.formatted}
                     className={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-xs font-bold ${
                       isNext ? "bg-primary text-on-primary" : "bg-surface-dim text-on-surface-muted"
                     }`}
@@ -163,7 +166,7 @@ export function VehicleSheet({
       <SheetActions
         leading={
           <label className="text-on-surface-muted flex cursor-pointer items-center gap-2 text-xs font-semibold select-none">
-            Follow
+            {t("vehicle.follow")}
             <button
               role="switch"
               aria-checked={followEnabled}
@@ -180,7 +183,7 @@ export function VehicleSheet({
         actions={[
           {
             key: "share",
-            label: "Share",
+            label: t("actions.share"),
             icon: <ShareIcon />,
             onClick: () => {
               const params = new URLSearchParams({ vehicle: vehicle.id });
@@ -190,7 +193,7 @@ export function VehicleSheet({
           },
           {
             key: "center",
-            label: "Center",
+            label: t("actions.center"),
             icon: <CenterIcon />,
             onClick: onLocate,
           },

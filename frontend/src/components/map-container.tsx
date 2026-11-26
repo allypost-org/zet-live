@@ -650,13 +650,16 @@ export function MapContainer() {
   const isFollowingSomething = selection !== null;
 
   useEffect(() => {
+    // The map is created asynchronously, so this can run before the style has
+    // finished applying; setLayoutProperty throws in that window.
+    if (!styleReady) return;
     const map = mapRef.current?.getMap();
     if (!map) return;
     map.setLayoutProperty("route-stops-label", "text-allow-overlap", isFollowingSomething);
     map.setLayoutProperty("route-stops-label", "text-ignore-placement", isFollowingSomething);
     map.setLayoutProperty("route-station-label", "text-allow-overlap", isFollowingSomething);
     map.setLayoutProperty("route-station-label", "text-ignore-placement", isFollowingSomething);
-  }, [isFollowingSomething]);
+  }, [isFollowingSomething, styleReady]);
 
   const vehicleMarkerLayout: Record<string, unknown> = useMemo(
     () => ({

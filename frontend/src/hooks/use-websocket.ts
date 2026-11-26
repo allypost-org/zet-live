@@ -12,6 +12,7 @@ import { useStore } from "@/store";
 import { toast } from "sonner";
 import { authStore, sessionToken, clearAuth } from "@/auth-store";
 import { setFeatureFlags } from "@/feature-flags-store";
+import { getT } from "@/i18n";
 
 const CONNECT_TIMEOUT_MS = 10_000;
 const RECONNECT_DELAY_MIN_MS = 3_000;
@@ -104,7 +105,10 @@ export function useWebSocket() {
         // stuck in CONNECTING with no open, error, or close event. Nothing below would
         // ever resolve, so the reconnect loop would stop for good.
         const connectTimer = setTimeout(() => {
-          useStore.setState({ lastError: "Connection timed out", wsConnected: false });
+          useStore.setState({
+            lastError: { key: "status.connectionTimedOut" },
+            wsConnected: false,
+          });
           ws.close();
         }, CONNECT_TIMEOUT_MS);
 
@@ -132,7 +136,7 @@ export function useWebSocket() {
           (e) => {
             clearTimeout(connectTimer);
             console.error("WebSocket error", e);
-            useStore.setState({ lastError: "Connection error", wsConnected: false });
+            useStore.setState({ lastError: { key: "status.connectionError" }, wsConnected: false });
             ws.close();
           },
           { signal },
@@ -158,7 +162,7 @@ export function useWebSocket() {
                 const msg = JSON.parse(e.data) as { d?: unknown };
                 if (msg.d && typeof msg.d === "object" && "sessionRevoked" in msg.d) {
                   clearAuth();
-                  toast.info("Your session has been revoked");
+                  toast.info(getT()("auth.toast.sessionRevoked"));
                 }
               } catch {
                 /* ignore malformed text */

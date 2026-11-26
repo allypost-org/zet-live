@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
+import { renderText, useT, type TFn } from "@/i18n";
 import { useStore } from "@/store";
 
-function formatAgo(ms: number): string {
+function formatAgo(ms: number, t: TFn): string {
   const seconds = Math.floor(ms / 1000);
-  if (seconds < 1) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 1) return t("status.justNow");
+  if (seconds < 60) return t("status.secondsAgo", { count: seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.floor(minutes / 60)}h ago`;
+  if (minutes < 60) return t("status.minutesAgo", { count: minutes });
+  return t("status.hoursAgo", { count: Math.floor(minutes / 60) });
 }
 
 export function StatusBar() {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const lastUpdate = useStore((s) => s.lastUpdate);
   const lastError = useStore((s) => s.lastError);
@@ -26,16 +28,16 @@ export function StatusBar() {
     };
   }, []);
 
-  const ago = lastUpdate ? formatAgo(Date.now() - lastUpdate) : "never";
+  const ago = lastUpdate ? formatAgo(Date.now() - lastUpdate, t) : t("status.never");
 
   return (
     <button
       type="button"
-      aria-label="Connection status"
+      aria-label={t("status.aria.label")}
       aria-expanded={expanded}
       aria-controls="connection-status-panel"
       aria-haspopup="menu"
-      aria-roledescription="connection status"
+      aria-roledescription={t("status.aria.label")}
       role="button"
       onClick={() => {
         setExpanded((e) => !e);
@@ -47,19 +49,19 @@ export function StatusBar() {
       />
       {expanded && (
         <div
-          aria-label="Connection status details"
+          aria-label={t("status.aria.details")}
           aria-modal="true"
           role="menu"
           id="connection-status-panel"
           className="flex items-center gap-2"
         >
-          <span>{wsConnected ? "Connected" : "Disconnected"}</span>
+          <span>{wsConnected ? t("status.connected") : t("status.disconnected")}</span>
           <span className="text-on-surface-muted">|</span>
-          <span>Last update: {ago}</span>
+          <span>{t("status.lastUpdate", { ago })}</span>
           {lastError && (
             <>
               <span className="text-on-surface-muted">|</span>
-              <span className="text-on-danger-container">{lastError}</span>
+              <span className="text-on-danger-container">{renderText(lastError, t)}</span>
             </>
           )}
         </div>

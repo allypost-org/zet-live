@@ -3,6 +3,7 @@ import { apiFetch } from "@/app/entity/v1/api";
 import { feedbackResponseSchema, type FeedbackPayload } from "@/app/entity/v1/feedback";
 import { toast } from "sonner";
 import { closeFeedback } from "@/feedback-store";
+import { getT } from "@/i18n";
 
 export type SubmitFeedbackResult = {
   ok: boolean;
@@ -47,11 +48,12 @@ export function useFeedbackSubmit() {
   return async (payload: Omit<FeedbackPayload, "meta">): Promise<boolean> => {
     const result = await submitFeedback(payload);
     if (result.ok) {
-      toast.success("Thanks for your feedback!");
+      const t = getT();
+      toast.success(t("feedback.toast.submitted"));
       closeFeedback();
       return true;
     }
-    toast.error("Failed to submit feedback", {
+    toast.error(getT()("feedback.toast.submitFailed"), {
       description: result.errorMessage ?? undefined,
     });
     return false;

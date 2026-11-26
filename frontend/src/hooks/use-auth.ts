@@ -4,6 +4,7 @@ import { apiFetch } from "@/app/entity/v1/api";
 import { linkTicketResponseSchema, meResponseSchema, okResponseSchema } from "@/app/entity/v1/auth";
 import { clearAuth, setAuth, setSessionToken, sessionToken } from "@/auth-store";
 import { toast } from "sonner";
+import { getT } from "@/i18n";
 import { openOAuthPopup } from "@/utils/oauth-popup";
 
 async function fetchMe(): Promise<void> {
@@ -30,14 +31,16 @@ export async function loginWith(provider: string): Promise<boolean> {
   try {
     const result = await openOAuthPopup(provider);
     if (!result.ok || !result.token) {
-      toast.error("Sign-in failed", { description: result.error ?? undefined });
+      toast.error(getT()("auth.toast.signInFailed"), { description: result.error ?? undefined });
       return false;
     }
     setSessionToken(result.token);
     await fetchMe();
     return true;
   } catch (e) {
-    toast.error("Sign-in failed", { description: e instanceof Error ? e.message : undefined });
+    toast.error(getT()("auth.toast.signInFailed"), {
+      description: e instanceof Error ? e.message : undefined,
+    });
     return false;
   }
 }
@@ -51,7 +54,9 @@ export async function linkProvider(
     method: "POST",
   });
   if (!ticketRes.data) {
-    toast.error("Could not start linking", { description: ticketRes.error.error || undefined });
+    toast.error(getT()("auth.toast.linkStartFailed"), {
+      description: ticketRes.error.error || undefined,
+    });
     return { status: "error" };
   }
 
@@ -61,13 +66,15 @@ export async function linkProvider(
       return { status: "conflict", transferToken: result.transferToken };
     }
     if (!result.ok) {
-      toast.error("Linking failed", { description: result.error ?? undefined });
+      toast.error(getT()("auth.toast.linkFailed"), { description: result.error ?? undefined });
       return { status: "error" };
     }
     await fetchMe();
     return { status: "linked" };
   } catch (e) {
-    toast.error("Linking failed", { description: e instanceof Error ? e.message : undefined });
+    toast.error(getT()("auth.toast.linkFailed"), {
+      description: e instanceof Error ? e.message : undefined,
+    });
     return { status: "error" };
   }
 }
@@ -81,7 +88,7 @@ export async function confirmTransfer(token: string): Promise<boolean> {
     await fetchMe();
     return true;
   }
-  toast.error("Could not transfer provider", { description: res.error.error || undefined });
+  toast.error(getT()("auth.toast.transferFailed"), { description: res.error.error || undefined });
   return false;
 }
 
@@ -98,7 +105,7 @@ export async function deleteAccount(): Promise<boolean> {
     clearAuth();
     return true;
   }
-  toast.error("Failed to delete account", { description: res.error.error || undefined });
+  toast.error(getT()("auth.toast.deleteFailed"), { description: res.error.error || undefined });
   return false;
 }
 
@@ -110,6 +117,6 @@ export async function unlinkProvider(provider: string): Promise<boolean> {
     await fetchMe();
     return true;
   }
-  toast.error("Failed to unlink provider", { description: result.error.error || undefined });
+  toast.error(getT()("auth.toast.unlinkFailed"), { description: result.error.error || undefined });
   return false;
 }

@@ -9,6 +9,7 @@ import {
 } from "@/app/entity/v1/auth";
 import { authStore } from "@/auth-store";
 import { toast } from "sonner";
+import { getT } from "@/i18n";
 
 export function useSessions() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -33,9 +34,11 @@ export function useSessions() {
     });
     if (res.data) {
       setSessions((prev) => prev.filter((s) => s.id !== id));
-      toast.success("Session revoked");
+      toast.success(getT()("sessions.revoked", { count: 1 }));
     } else {
-      toast.error("Failed to revoke session", { description: res.error.error || undefined });
+      toast.error(getT()("sessions.revokeFailedOne"), {
+        description: res.error.error || undefined,
+      });
     }
   }, []);
 
@@ -45,10 +48,11 @@ export function useSessions() {
     });
     if (res.data) {
       setSessions((prev) => prev.filter((s) => s.id === currentSessionId));
-      const n = res.data.revoked;
-      toast.success(`Revoked ${n} session${n === 1 ? "" : "s"}`);
+      toast.success(getT()("sessions.revoked", { count: res.data.revoked }));
     } else {
-      toast.error("Failed to revoke sessions", { description: res.error.error || undefined });
+      toast.error(getT()("sessions.revokeFailedAll"), {
+        description: res.error.error || undefined,
+      });
     }
   }, [currentSessionId]);
 

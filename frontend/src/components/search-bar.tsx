@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Fuse from "fuse.js";
+import { makeT, useLanguage, useT } from "@/i18n";
 import { useStore, type GroupedStop } from "@/store";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
 
@@ -41,9 +42,12 @@ export function SearchBar() {
   const [isSearchActive, setIsSearchActive] = useState(false);
   const vehicles = useStore((s) => s.vehicles);
   const stopsGrouped = useStore((s) => s.stopsGrouped);
+  const t = useT();
+  const language = useLanguage();
 
   const searchableItems = useMemo<SearchableItem[]>(() => {
     if (!isSearchActive) return [];
+    const translate = makeT(language);
 
     const items: SearchableItem[] = [];
 
@@ -58,7 +62,7 @@ export function SearchBar() {
 
     const groups = new Map<string, VehicleRouteGroup>();
     for (const v of vehicles.values()) {
-      const displayName = v.getDisplayName();
+      const displayName = v.getDisplayName(translate);
       const key = `${v.routeId}|${displayName}`;
       const existing = groups.get(key);
       if (existing) {
@@ -82,7 +86,7 @@ export function SearchBar() {
     }
 
     return items;
-  }, [isSearchActive, vehicles, stopsGrouped]);
+  }, [isSearchActive, vehicles, stopsGrouped, language]);
 
   const fuse = useMemo(
     () =>
@@ -274,13 +278,13 @@ export function SearchBar() {
             if (!query.trim()) setIsSearchActive(false);
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Search stations or routes..."
+          placeholder={t("search.placeholder")}
           className="text-on-surface placeholder:text-on-surface-faint min-w-0 flex-1 bg-transparent text-sm outline-none"
         />
         {hasQuery && (
           <button
             type="button"
-            aria-label="Clear search"
+            aria-label={t("search.aria.clear")}
             onMouseDown={(e) => {
               e.preventDefault();
             }}
@@ -321,7 +325,7 @@ export function SearchBar() {
                   : "bg-surface-dim text-on-surface-faint"
               }`}
             >
-              Stations
+              {t("search.filter.stations")}
             </button>
             <button
               type="button"
@@ -334,7 +338,7 @@ export function SearchBar() {
                   : "bg-surface-dim text-on-surface-faint"
               }`}
             >
-              Trams
+              {t("search.filter.trams")}
             </button>
             <button
               type="button"
@@ -347,7 +351,7 @@ export function SearchBar() {
                   : "bg-surface-dim text-on-surface-faint"
               }`}
             >
-              Buses
+              {t("search.filter.buses")}
             </button>
           </div>
 
@@ -398,7 +402,7 @@ export function SearchBar() {
                       <span className="font-medium">{result.item.name}</span>
                     </span>
                     <span className="text-on-surface-faint pl-6 text-xs">
-                      {result.item.ids.length === 1 ? "1 stop" : `${result.item.ids.length} stops`}
+                      {t("search.stopCount", { count: result.item.ids.length })}
                     </span>
                   </>
                 ) : (
@@ -412,9 +416,7 @@ export function SearchBar() {
                       <span className="font-medium">{result.item.displayName}</span>
                     </span>
                     <span className="text-on-surface-faint pl-7 text-xs">
-                      {result.item.vehicles.length === 1
-                        ? "1 vehicle"
-                        : `${result.item.vehicles.length} vehicles`}
+                      {t("search.vehicleCount", { count: result.item.vehicles.length })}
                     </span>
                   </>
                 )}
@@ -423,7 +425,7 @@ export function SearchBar() {
 
             {!hasResults && (
               <div className="text-on-surface-faint px-3 py-3 text-center text-sm" role="status">
-                No results found
+                {t("search.noResults")}
               </div>
             )}
           </div>

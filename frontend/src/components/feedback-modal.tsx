@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  FEEDBACK_CATEGORIES,
   FEEDBACK_MAX_CONTACT_LEN,
   FEEDBACK_MAX_MESSAGE_LEN,
   FEEDBACK_MAX_NAME_LEN,
+  feedbackCategorySchema,
   feedbackPayloadSchema,
   type FeedbackCategory,
   myFeedbackResponseSchema,
@@ -15,20 +15,38 @@ import { closeFeedback, openFeedback, useFeedbackOpen } from "@/feedback-store";
 import { useAuthStatus } from "@/auth-store";
 import { API_URL } from "@/app/consts";
 import { apiFetch } from "@/app/entity/v1/api";
+import { renderText, useT, type TFn, type UiText } from "@/i18n";
+import { useDateTimeFormatter } from "@/utils/time";
 import { cn } from "@/utils/style";
 import { appQueueMicrotask } from "@/utils/polyfill/requestSomeCallback";
 
-type FieldErrors = {
-  category?: string;
-  message?: string;
-  name?: string;
-  contact?: string;
-};
+type FeedbackTextField = "category" | "message" | "name" | "contact";
+type FieldErrors = Partial<Record<FeedbackTextField, UiText>>;
+
+type FeedbackKey = Parameters<TFn>[0];
 
 const INITIAL_CATEGORY: FeedbackCategory = "bug";
 
+function categoryLabel(id: string, t: TFn): string {
+  const parsed = feedbackCategorySchema.safeParse(id);
+  return parsed.success ? t(`feedback.category.${parsed.data}.label`) : id;
+}
+
+// Validation messages come from zod issues; common codes map to keys and
+// anything unexpected keeps the schema message.
+const FIELD_ERROR_KEYS: Record<FeedbackTextField, Record<string, FeedbackKey>> = {
+  category: { invalid_enum_value: "feedback.error.category" },
+  message: {
+    too_small: "feedback.error.messageRequired",
+    too_big: "feedback.error.messageTooLong",
+  },
+  name: { too_big: "feedback.error.nameTooLong" },
+  contact: { too_big: "feedback.error.contactTooLong" },
+};
+
 export function FeedbackModal() {
   const open = useFeedbackOpen();
+  const t = useT();
 
   const [category, setCategory] = useState<FeedbackCategory>(INITIAL_CATEGORY);
   const [message, setMessage] = useState("");
@@ -113,7 +131,8 @@ export function FeedbackModal() {
         const key = issue.path[0];
         if (key === "category" || key === "message" || key === "name" || key === "contact") {
           if (!next[key]) {
-            next[key] = issue.message;
+            const mapped = FIELD_ERROR_KEYS[key][issue.code];
+            next[key] = mapped ? { key: mapped } : issue.message;
           }
         }
       }
@@ -168,15 +187,15 @@ export function FeedbackModal() {
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className="bg-surface relative z-10 max-h-[85dvh] w-[90vw] max-w-md overflow-auto rounded-2xl shadow-xl"
-            aria-label="Send feedback"
+            aria-label={t("feedback.action")}
             aria-modal="true"
             aria-expanded="true"
           >
             <div className="bg-surface sticky top-0 flex items-center justify-between rounded-t-2xl px-4 py-2">
-              <h2 className="text-on-surface text-base font-bold">Send feedback</h2>
+              <h2 className="text-on-surface text-base font-bold">{t("feedback.action")}</h2>
               <button
                 type="button"
-                aria-label="Close feedback"
+                aria-label={t("feedback.aria.close")}
                 aria-expanded={open}
                 aria-controls="feedback-panel"
                 onClick={handleClose}
@@ -203,7 +222,7 @@ export function FeedbackModal() {
             {authStatus === "authenticated" && myItems.length > 0 ? (
               <section className="flex flex-col gap-2 px-5 pt-3">
                 <h3 className="text-on-surface-muted text-xs font-semibold tracking-wide uppercase">
-                  Your submissions
+                  {t("feedback.yourSubmissions")}
                 </h3>
                 <div className="flex flex-col gap-2">
                   {myItems.map((item) => (
@@ -221,23 +240,23 @@ export function FeedbackModal() {
               }}
               noValidate
             >
-              <Field label="Type" error={errors.category}>
+              <Field label={t("feedback.field.type")} error={errors.category}>
                 <div className="grid grid-cols-3 gap-2">
-                  {FEEDBACK_CATEGORIES.map((c) => (
+                  {feedbackCategorySchema.options.map((id) => (
                     <CategorySelect
-                      key={c.id}
-                      selected={category === c.id}
-                      title={c.label}
-                      description={c.description}
+                      key={id}
+                      selected={category === id}
+                      title={t(`feedback.category.${id}.label`)}
+                      description={t(`feedback.category.${id}.description`)}
                       onSelect={() => {
-                        setCategory(c.id);
+                        setCategory(id);
                       }}
                     />
                   ))}
                 </div>
               </Field>
 
-              <Field label="Message" error={errors.message}>
+              <Field label={t("feedback.field.message")} error={errors.message}>
                 <textarea
                   ref={firstInputRef}
                   value={message}
@@ -245,7 +264,7 @@ export function FeedbackModal() {
                     setMessage(e.target.value);
                   }}
                   maxLength={FEEDBACK_MAX_MESSAGE_LEN}
-                  placeholder="What went wrong, or what would you like to see?"
+                  placeholder={t("feedback.placeholder.message")}
                   rows={4}
                   className={cn(
                     "min-h-[96px] resize-y rounded-lg border px-3 py-2 text-sm transition-colors outline-none",
@@ -258,7 +277,7 @@ export function FeedbackModal() {
                 </div>
               </Field>
 
-              <Field label="Name (optional)" error={errors.name}>
+              <Field label={t("feedback.field.name")} error={errors.name}>
                 <input
                   type="text"
                   value={name}
@@ -266,7 +285,7 @@ export function FeedbackModal() {
                     setName(e.target.value);
                   }}
                   maxLength={FEEDBACK_MAX_NAME_LEN}
-                  placeholder="Your name"
+                  placeholder={t("feedback.placeholder.name")}
                   className={cn(
                     "rounded-lg border px-3 py-2 text-sm transition-colors outline-none",
                     "border-outline bg-surface-dim text-on-surface placeholder:text-on-surface-faint focus:border-primary",
@@ -275,7 +294,7 @@ export function FeedbackModal() {
                 />
               </Field>
 
-              <Field label="Contact (optional)" error={errors.contact}>
+              <Field label={t("feedback.field.contact")} error={errors.contact}>
                 <input
                   type="text"
                   value={contact}
@@ -283,7 +302,7 @@ export function FeedbackModal() {
                     setContact(e.target.value);
                   }}
                   maxLength={FEEDBACK_MAX_CONTACT_LEN}
-                  placeholder="Email or handle, if you want a reply"
+                  placeholder={t("feedback.placeholder.contact")}
                   className={cn(
                     "rounded-lg border px-3 py-2 text-sm transition-colors outline-none",
                     "border-outline bg-surface-dim text-on-surface placeholder:text-on-surface-faint focus:border-primary",
@@ -314,14 +333,14 @@ export function FeedbackModal() {
                   disabled={submitting}
                   className="text-on-surface-variant hover:bg-surface-hover rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Cancel
+                  {t("feedback.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
                   className="bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {submitting ? "Sending…" : "Send"}
+                  {submitting ? t("feedback.sending") : t("feedback.send")}
                 </button>
               </div>
             </form>
@@ -332,7 +351,8 @@ export function FeedbackModal() {
   );
 }
 
-function Field(props: { label: string; error?: string; children: React.ReactNode }) {
+function Field(props: { label: string; error?: UiText; children: React.ReactNode }) {
+  const t = useT();
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-on-surface-muted text-xs font-semibold tracking-wide uppercase">
@@ -340,7 +360,9 @@ function Field(props: { label: string; error?: string; children: React.ReactNode
       </span>
       {props.children}
       {props.error ? (
-        <span className="text-on-danger-container text-xs font-medium">{props.error}</span>
+        <span className="text-on-danger-container text-xs font-medium">
+          {renderText(props.error, t)}
+        </span>
       ) : null}
     </label>
   );
@@ -376,17 +398,18 @@ function CategorySelect(props: {
 
 export function FeedbackButton() {
   const open = useFeedbackOpen();
+  const t = useT();
 
   return (
     <button
       type="button"
-      aria-label="Send feedback"
+      aria-label={t("feedback.action")}
       onClick={() => {
         openFeedback();
       }}
       aria-expanded={open}
       aria-controls="feedback-panel"
-      title="Send feedback"
+      title={t("feedback.action")}
       className="bg-surface-overlay text-on-surface-variant hover:bg-surface flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg shadow-md backdrop-blur-sm transition-colors"
     >
       <svg
@@ -407,14 +430,10 @@ export function FeedbackButton() {
 }
 
 function FeedbackHistoryItem({ item }: { item: MyFeedbackItem }) {
-  const date = new Date(item.createdAt).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const t = useT();
+  const date = useDateTimeFormatter().dateTime(new Date(item.createdAt));
 
-  const statusStyles: Record<string, string> = {
+  const statusStyles: Record<MyFeedbackItem["status"], string> = {
     open: "bg-primary-container text-on-primary-container",
     acknowledged: "bg-primary-container text-on-primary-container",
     replied: "bg-success-container text-on-success-container",
@@ -425,22 +444,24 @@ function FeedbackHistoryItem({ item }: { item: MyFeedbackItem }) {
     <div className="border-outline bg-surface-dim flex flex-col gap-1.5 rounded-lg border p-3">
       <div className="flex items-center gap-2">
         <span className="text-on-surface-muted text-xs font-semibold uppercase">
-          {item.category}
+          {categoryLabel(item.category, t)}
         </span>
         <span
           className={cn(
             "rounded px-1.5 py-0.5 text-[0.65rem] font-bold uppercase",
-            statusStyles[item.status] ?? statusStyles.open,
+            statusStyles[item.status],
           )}
         >
-          {item.status}
+          {t(`feedback.status.${item.status}`)}
         </span>
         <span className="text-on-surface-faint ml-auto text-xs">{date}</span>
       </div>
       <p className="text-on-surface text-sm">{item.message}</p>
       {item.reply ? (
         <div className="border-outline mt-1 border-l-2 pl-2 text-sm">
-          <span className="text-on-surface-muted text-xs font-semibold uppercase">Reply</span>
+          <span className="text-on-surface-muted text-xs font-semibold uppercase">
+            {t("feedback.reply")}
+          </span>
           <p className="text-on-surface">{item.reply}</p>
         </div>
       ) : null}

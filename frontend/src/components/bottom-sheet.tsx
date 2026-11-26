@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useT } from "@/i18n";
 import { animate, motion, useMotionValue } from "motion/react";
 import {
   appRequestAnimationFrame,
@@ -37,6 +38,7 @@ export function BottomSheet({
   expandedHeight = "40dvh",
   maximizedHeight = "calc(95dvh - 36px)",
 }: Props) {
+  const t = useT();
   const [sheetState, setSheetState] = useState<SheetState>("expanded");
   const [rendered, setRendered] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -166,7 +168,7 @@ export function BottomSheet({
   return (
     <div className="pointer-events-none fixed right-0 bottom-0 left-0 z-999 flex justify-center">
       <motion.div
-        aria-label="Bottom sheet"
+        aria-label={t("sheet.aria.dialog")}
         aria-modal="true"
         role="dialog"
         ref={sheetRef}
@@ -244,7 +246,7 @@ export function BottomSheet({
           >
             <button
               type="button"
-              aria-label={minimized ? "Expand sheet" : "Minimize sheet"}
+              aria-label={minimized ? t("sheet.aria.expand") : t("sheet.aria.minimize")}
               onClick={() => {
                 setSheetState((s) => (s === "minimized" ? "expanded" : "minimized"));
               }}
@@ -282,7 +284,7 @@ export function BottomSheet({
             </button>
             <button
               type="button"
-              aria-label="Close sheet"
+              aria-label={t("sheet.aria.close")}
               onClick={onClose}
               className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted flex size-11 items-center justify-center rounded-full transition-colors"
             >

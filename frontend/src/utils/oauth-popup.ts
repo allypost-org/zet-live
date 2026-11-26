@@ -1,4 +1,5 @@
 import { backendOrigin } from "@/capabilities-store";
+import { getT } from "@/i18n";
 
 const POPUP_WIDTH = 520;
 const POPUP_HEIGHT = 680;
@@ -56,7 +57,7 @@ export function openOAuthPopup(
     const popup = window.open(url, `zet-auth-${provider}`, centerPopupFeatures());
 
     if (!popup) {
-      reject(new Error("Popup blocked. Please allow popups for this site."));
+      reject(new Error(getT()("auth.popup.blocked")));
       return;
     }
 
@@ -106,12 +107,12 @@ export function openOAuthPopup(
     window.addEventListener("message", onMessage);
 
     timeoutId = setTimeout(() => {
-      done({ ok: false, provider, error: "Sign-in timed out. Please try again." });
+      done({ ok: false, provider, error: getT()("auth.popup.timedOut") });
     }, RESPONSE_TIMEOUT);
 
     closedPollId = setInterval(() => {
       if (popup.closed) {
-        done({ ok: false, provider, error: "Sign-in window was closed." });
+        done({ ok: false, provider, error: getT()("auth.popup.closed") });
       }
     }, POLL_CLOSED_INTERVAL);
   });

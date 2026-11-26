@@ -1,8 +1,10 @@
 import { useAuthModalOpen, useCurrentUser, openAuthModal } from "@/auth-store";
 import { useAuthProviders } from "@/capabilities-store";
 import { Avatar, UserGlyph } from "@/components/avatar";
+import { useT } from "@/i18n";
 
 export function AuthButton() {
+  const t = useT();
   const providers = useAuthProviders();
   const user = useCurrentUser();
   const open = useAuthModalOpen();
@@ -13,11 +15,11 @@ export function AuthButton() {
   return (
     <button
       type="button"
-      aria-label="Account"
+      aria-label={t("auth.account")}
       onClick={openAuthModal}
       aria-expanded={open}
       aria-controls="account-panel"
-      title="Account"
+      title={t("auth.account")}
       className="bg-surface-overlay text-on-surface-variant hover:bg-surface flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-lg shadow-md backdrop-blur-sm transition-colors"
     >
       <Avatar

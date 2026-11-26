@@ -1,3 +1,5 @@
+import { getT, type TFn } from "@/i18n";
+
 /** Indices match `Vehicle::to_simple()` in the backend. */
 const SIMPLE_FIELD = {
   id: 0,
@@ -123,8 +125,12 @@ export class VehicleV1 {
     };
   }
 
-  public getDisplayName(): string {
-    return this.tripHeadsign?.trim() || this.routeLongName?.trim() || `Route ${this.routeId}`;
+  public getDisplayName(t: TFn = getT()): string {
+    return (
+      this.tripHeadsign?.trim() ||
+      this.routeLongName?.trim() ||
+      t("entity.routeFallback", { id: this.routeId })
+    );
   }
 
   public getMapId() {

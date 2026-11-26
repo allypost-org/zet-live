@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { toast } from "sonner";
+import { getT } from "@/i18n";
 
 const ICON_PROPS = {
   xmlns: "http://www.w3.org/2000/svg",
@@ -92,7 +93,7 @@ export function shareSheetLink(title: string, params: URLSearchParams) {
   }
   navigator.clipboard.writeText(url).then(
     () =>
-      toast.success("Link copied to clipboard", {
+      toast.success(getT()("actions.linkCopied"), {
         dismissible: true,
       }),
     () => {},

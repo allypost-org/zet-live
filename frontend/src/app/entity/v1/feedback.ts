@@ -7,16 +7,6 @@ export const FEEDBACK_MAX_CONTACT_LEN = 200;
 export const feedbackCategorySchema = z.enum(["bug", "feature", "other"]);
 export type FeedbackCategory = z.infer<typeof feedbackCategorySchema>;
 
-export const FEEDBACK_CATEGORIES: ReadonlyArray<{
-  id: FeedbackCategory;
-  label: string;
-  description: string;
-}> = [
-  { id: "bug", label: "Bug", description: "Something is broken" },
-  { id: "feature", label: "Feature", description: "An idea or request" },
-  { id: "other", label: "Other", description: "Anything else" },
-];
-
 export const feedbackMetaSchema = z.object({
   url: z.string().max(512),
   ua: z.string().max(512),

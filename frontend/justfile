@@ -51,5 +51,8 @@ type-check:
 preview: build
     bun run preview
 
+test:
+    bun test src
+
 og-image:
     ./scripts/generate-og.sh

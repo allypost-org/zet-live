@@ -1,7 +1,9 @@
 import type { Departure } from "@/app/entity/v1/api";
+import { useT } from "@/i18n";
+import type { TFn } from "@/i18n";
 import { useNow } from "@/hooks/use-now";
 import { LineBadge } from "@/components/line-badge";
-import { formatClockTime, formatMinutesFromNow } from "@/utils/time";
+import { formatMinutesFromNow, useDateTimeFormatter } from "@/utils/time";
 
 type Props = {
   departures: Departure[] | null;
@@ -20,23 +22,25 @@ const COUNTDOWN_HORIZON_MS = 60 * 60_000;
 
 export function DepartureSummary({ departure, stale }: { departure: Departure; stale: boolean }) {
   const now = useNow();
+  const t = useT();
   return (
     <span className="text-on-surface-muted text-xs">
-      {stale ? "Updates unavailable · " : ""}
-      {departureSummary(departure, now)}
+      {stale ? `${t("departures.updatesUnavailable")} \u00b7 ` : ""}
+      {departureSummary(departure, now, t)}
     </span>
   );
 }
 
 /** Short label for the minimized sheet body: "6 · Črnomerec · 3 min". */
-export function departureSummary(d: Departure, now: number): string {
+export function departureSummary(d: Departure, now: number, t: TFn): string {
   const time = d.kind === "live" ? d.predictedTime : d.scheduledTime;
   const minutes = Math.round((time.getTime() - now) / 60_000);
-  const eta = minutes <= 0 ? "now" : minutes === 1 ? "1 min" : `${minutes} min`;
-  return `${d.routeId} · ${d.headsign} · ${eta}`;
+  const eta = minutes <= 0 ? t("time.now") : t("time.minutes", { count: minutes });
+  return `${d.routeId} \u00b7 ${d.headsign} \u00b7 ${eta}`;
 }
 
 function LiveDelay({ scheduledTime, predictedTime }: { scheduledTime: Date; predictedTime: Date }) {
+  const format = useDateTimeFormatter();
   const delayMs = predictedTime.getTime() - scheduledTime.getTime();
   if (Math.abs(delayMs) < DELAY_THRESHOLD_MS) return null;
   const late = delayMs > 0;
@@ -44,8 +48,8 @@ function LiveDelay({ scheduledTime, predictedTime }: { scheduledTime: Date; pred
     <span
       className={`col-span-2 col-start-4 grid grid-cols-subgrid items-center text-right whitespace-nowrap tabular-nums ${late ? "text-warn" : "text-primary"}`}
     >
-      <s className="text-on-surface-faint">{formatClockTime(scheduledTime)}</s>{" "}
-      <span>{formatClockTime(predictedTime)}</span>
+      <s className="text-on-surface-faint">{format.time(scheduledTime)}</s>{" "}
+      <span>{format.time(predictedTime)}</span>
     </span>
   );
 }
@@ -59,6 +63,7 @@ function Row({
   now: number;
   onVehicleClick: Props["onVehicleClick"];
 }) {
+  const format = useDateTimeFormatter();
   const isLive = d.kind === "live";
   const time = isLive ? d.predictedTime : d.scheduledTime;
   const showCountdown = time.getTime() - now < COUNTDOWN_HORIZON_MS;
@@ -82,7 +87,7 @@ function Row({
           <LiveDelay scheduledTime={d.scheduledTime} predictedTime={d.predictedTime} />
         ) : (
           <span className="text-on-surface-faint col-start-5 text-right whitespace-nowrap tabular-nums">
-            {formatClockTime(time)}
+            {format.time(time)}
           </span>
         )}
         <span
@@ -101,7 +106,7 @@ function Row({
       {showCountdown ? (
         <>
           <span className="text-on-surface-faint col-start-5 text-right whitespace-nowrap tabular-nums">
-            {formatClockTime(time)}
+            {format.time(time)}
           </span>
           <span className="text-on-surface-muted col-start-6 text-right font-medium whitespace-nowrap tabular-nums">
             {formatMinutesFromNow(time)}
@@ -109,7 +114,7 @@ function Row({
         </>
       ) : (
         <span className="text-on-surface-muted col-start-5 text-right font-medium whitespace-nowrap tabular-nums">
-          {formatClockTime(time)}
+          {format.time(time)}
         </span>
       )}
     </div>
@@ -133,6 +138,8 @@ export function DeparturesBoard({
   preview = false,
 }: Props) {
   const now = useNow();
+  const t = useT();
+  const format = useDateTimeFormatter();
 
   if (departures === null && fetchError === null) {
     return (
@@ -149,7 +156,9 @@ export function DeparturesBoard({
       <div className="mb-2 space-y-2 px-4 text-sm">
         <p role="status" className="text-on-surface-faint italic">
           {lastUpdated !== null
-            ? `Updates unavailable — last updated ${formatClockTime(new Date(lastUpdated))}. `
+            ? `${t("departures.updatesUnavailable")} \u2014 ${t("departures.lastUpdated", {
+                time: format.time(new Date(lastUpdated)),
+              })}. `
             : ""}
           {fetchError}
         </p>
@@ -162,7 +171,7 @@ export function DeparturesBoard({
     return (
       <div className="mb-2 space-y-2 px-4 text-sm">
         <span className="text-on-surface-faint italic">
-          {scheduleGone ? "Schedule unavailable" : "No more departures today"}
+          {scheduleGone ? t("departures.scheduleUnavailable") : t("departures.noMoreToday")}
         </span>
       </div>
     );
@@ -184,22 +193,27 @@ export function DeparturesBoard({
     <div className="grid grid-cols-[max-content_0.375rem_minmax(0,1fr)_max-content_max-content_max-content] gap-x-2 gap-y-0.5 px-2 text-sm">
       {fetchError !== null ? (
         <p role="status" className="text-warn col-span-full px-2 py-1">
-          Updates unavailable
+          {t("departures.updatesUnavailable")}
           {lastUpdated !== null
-            ? ` — last updated ${formatClockTime(new Date(lastUpdated))}`
-            : ""}. {fetchError}
+            ? ` \u2014 ${t("departures.lastUpdated", {
+                time: format.time(new Date(lastUpdated)),
+              })}`
+            : ""}
+          . {fetchError}
         </p>
       ) : null}
       {preview ? departures?.map(row) : null}
       {!preview && live.length > 0 ? (
         <>
-          <SectionHeader label={fetchError === null ? "Live now" : "Last known live arrivals"} />
+          <SectionHeader
+            label={fetchError === null ? t("departures.liveNow") : t("departures.lastKnownLive")}
+          />
           {live.map(row)}
         </>
       ) : null}
       {!preview && scheduled.length > 0 ? (
         <>
-          <SectionHeader label="Scheduled" />
+          <SectionHeader label={t("departures.scheduled")} />
           {scheduled.map(row)}
         </>
       ) : null}

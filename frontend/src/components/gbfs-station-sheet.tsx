@@ -1,3 +1,4 @@
+import { useT } from "@/i18n";
 import type { GbfsStationV1 } from "@/app/entity/v1/gbfs-station";
 
 type Props = {
@@ -5,6 +6,7 @@ type Props = {
 };
 
 export function GbfsStationSheet({ station }: Props) {
+  const t = useT();
   const bikes = station.numBikesAvailable;
   const docks = station.numDocksAvailable;
   const rentUrl = new URL("https://app.nextbike.net/station");
@@ -13,8 +15,12 @@ export function GbfsStationSheet({ station }: Props) {
   return (
     <div className="px-4 pb-3">
       <div className="grid grid-cols-2 gap-2">
-        <Stat label="Bikes available" value={bikes} accent={bikes === 0 ? "empty" : "ok"} />
-        <Stat label="Docks free" value={docks} />
+        <Stat
+          label={t("station.bikesAvailable")}
+          value={bikes}
+          accent={bikes === 0 ? "empty" : "ok"}
+        />
+        <Stat label={t("station.docksFree")} value={docks} />
         {bikes && bikes > 0 ? (
           <a
             className="bg-primary-container text-primary-container-hover hover:bg-primary-container-hover col-span-2 rounded px-4 py-3 text-center font-semibold transition-colors"
@@ -22,17 +28,25 @@ export function GbfsStationSheet({ station }: Props) {
             rel="noreferrer"
             href={rentUrl.toString()}
           >
-            Open App
+            {t("station.openApp")}
           </a>
         ) : null}
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5">
-        <StatusPill ok={station.isRenting} okLabel="Renting" notOkLabel="Not renting" />
-        <StatusPill ok={station.isReturning} okLabel="Returning" notOkLabel="Not returning" />
+        <StatusPill
+          ok={station.isRenting}
+          okLabel={t("station.renting")}
+          notOkLabel={t("station.notRenting")}
+        />
+        <StatusPill
+          ok={station.isReturning}
+          okLabel={t("station.returning")}
+          notOkLabel={t("station.notReturning")}
+        />
         {station.capacity !== null && (
           <span className="bg-surface-dim text-on-surface-muted rounded px-1.5 py-0.5 text-xs font-medium">
-            Capacity {station.capacity}
+            {t("station.capacity", { count: station.capacity })}
           </span>
         )}
       </div>

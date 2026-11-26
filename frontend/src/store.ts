@@ -8,6 +8,7 @@ import type { GroupedStop } from "./app/entity/shared";
 import type { TripStopTimeEntry } from "./app/trip-stop-times";
 import { stopArrivalTimeSchema, type Departure } from "./app/entity/v1/api";
 import type { GlobalNotice } from "./app/entity/v1/message";
+import type { UiText } from "@/i18n";
 
 export type { TripStopTimeEntry };
 
@@ -30,7 +31,7 @@ export type Selection =
 export type VehicleSelection = {
   route: [number, number][] | null;
   tripStopTimes: TripStopTimeEntry[] | null;
-  fetchError: string | null;
+  fetchError: UiText | null;
   followEnabled: boolean;
 };
 
@@ -45,7 +46,7 @@ export type StopDepartureBoard = {
 };
 
 export type StopSelection = {
-  name: string;
+  name: UiText;
   routes: string[];
   tripIds: Set<string> | null;
   arrivalTimes: StopArrivalTime[] | null;
@@ -78,7 +79,7 @@ export type StoreState = {
   deltaMoveLines: VehicleLocationPair[];
 
   lastUpdate: number | null;
-  lastError: string | null;
+  lastError: UiText | null;
   wsConnected: boolean;
 
   mapReady: boolean;
@@ -116,12 +117,12 @@ function gbfsStationMapKey(id: string) {
   return `gbfs-station-${id}`;
 }
 
-function resolveStopDisplayName(ids: string[], simpleStops: Record<string, StopV1>): string {
+function resolveStopDisplayName(ids: string[], simpleStops: Record<string, StopV1>): UiText {
   for (const id of ids) {
     const name = simpleStops[id]?.name;
     if (name) return name;
   }
-  return "Unknown stop";
+  return { key: "stop.unknown" };
 }
 
 function buildStopDisplayedStops(

@@ -1,3 +1,4 @@
+import { useT } from "@/i18n";
 import { LineBadge } from "@/components/line-badge";
 import type { StopArrivalTime } from "@/store";
 import { formatMinutesFromNow } from "@/utils/time";
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export function StopSheet({ arrivals, onArrivalClick }: Props) {
+  const t = useT();
   const grouped = new Map<string, StopArrivalTime[]>();
   for (const a of arrivals ?? []) {
     const list = grouped.get(a.routeId) ?? [];
@@ -35,9 +37,9 @@ export function StopSheet({ arrivals, onArrivalClick }: Props) {
     <div className="px-4 pb-3">
       <div className="space-y-1">
         {arrivals === null ? (
-          <span className="text-on-surface-faint text-xs italic">Loading arrivals...</span>
+          <span className="text-on-surface-faint text-xs italic">{t("stop.loadingArrivals")}</span>
         ) : sortedGroups.length === 0 ? (
-          <span className="text-on-surface-faint text-xs italic">No active vehicles</span>
+          <span className="text-on-surface-faint text-xs italic">{t("stop.noActiveVehicles")}</span>
         ) : (
           sortedGroups.map(([routeId, times]) => {
             return (

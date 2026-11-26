@@ -2,6 +2,7 @@ import { useStore } from "@/store";
 import type { GlobalNotice } from "@/app/entity/v1/message";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { useT } from "@/i18n";
 
 const DISMISSED_KEY = "dismissed-notice-ids";
 
@@ -64,6 +65,7 @@ function getIcon(severity: Severity): string {
 }
 
 function NoticeItem({ notice, onDismiss }: { notice: GlobalNotice; onDismiss: () => void }) {
+  const t = useT();
   const style = getStyle(notice.severity);
   const icon = getIcon(notice.severity);
 
@@ -83,7 +85,7 @@ function NoticeItem({ notice, onDismiss }: { notice: GlobalNotice; onDismiss: ()
         type="button"
         onClick={onDismiss}
         className="ml-2 shrink-0 rounded p-0.5 opacity-70 transition-opacity hover:opacity-100"
-        aria-label="Dismiss notice"
+        aria-label={t("notice.dismiss")}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path

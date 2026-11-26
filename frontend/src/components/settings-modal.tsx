@@ -4,47 +4,58 @@ import {
   settingsStore,
   updateSetting,
   useSetting,
+  type LanguageChoice,
   type MapStyleId,
   type MapThemeMode,
   type UiThemeMode,
   type UiTheme,
   type VehicleMotion,
+  DATE_FORMATS,
+  TIME_FORMATS,
 } from "@/settings";
 import { openFeedback } from "@/feedback-store";
 import type { ReactNode } from "react";
 import { cn } from "@/utils/style";
+import { useT } from "@/i18n";
+import { formatDate, formatTime } from "@/utils/time";
 
-const MAP_STYLES: { id: MapStyleId; label: string }[] = [
-  { id: "3d", label: "3D" },
-  { id: "3d.dark", label: "3D Dark" },
-  { id: "flat", label: "Flat" },
-  { id: "satellite", label: "Satellite" },
+const MAP_STYLES: { id: MapStyleId }[] = [
+  { id: "3d" },
+  { id: "3d.dark" },
+  { id: "flat" },
+  { id: "satellite" },
 ];
 
-const MAP_THEME_MODES: { id: MapThemeMode; label: string; description: string }[] = [
-  { id: "device", label: "Device", description: "System preference" },
-  { id: "time", label: "Sun Cycle", description: "Sunrise & sunset" },
-  { id: "manual", label: "Manual", description: "Choose yourself" },
+const MAP_THEME_MODES: { id: MapThemeMode }[] = [
+  { id: "device" },
+  { id: "time" },
+  { id: "manual" },
 ];
 
-const UI_THEME_MODES: { id: UiThemeMode; label: string; description: string }[] = [
-  { id: "device", label: "Device", description: "System preference" },
-  { id: "time", label: "Sun Cycle", description: "Sunrise & sunset" },
-  { id: "map", label: "Map", description: "Match map style" },
-  { id: "manual", label: "Manual", description: "Choose yourself" },
+const UI_THEME_MODES: { id: UiThemeMode }[] = [
+  { id: "device" },
+  { id: "time" },
+  { id: "map" },
+  { id: "manual" },
 ];
 
-const VEHICLE_MOTIONS: { id: VehicleMotion; label: string; description: string }[] = [
-  { id: "animate", label: "Animate", description: "Move smoothly when zoomed in" },
-  { id: "trail", label: "Trail", description: "Jump and show the last move" },
-];
+const VEHICLE_MOTIONS: { id: VehicleMotion }[] = [{ id: "animate" }, { id: "trail" }];
 
-const UI_THEMES: { id: UiTheme; label: string }[] = [
-  { id: "light", label: "Light" },
-  { id: "dark", label: "Dark" },
-];
+const UI_THEMES: { id: UiTheme }[] = [{ id: "light" }, { id: "dark" }];
+
+const LANGUAGE_CHOICES: { id: LanguageChoice }[] = [{ id: "auto" }, { id: "en" }, { id: "hr" }];
+
+// Each option shows its format applied to this sample date. Day 21 makes the
+// day-month order unambiguous, and 13:45 shows the 12-hour conversion.
+const FORMAT_SAMPLE = new Date(2026, 3, 21, 13, 45);
+
+const TIME_FORMAT_OPTIONS = TIME_FORMATS.map((id) => ({
+  id,
+  label: formatTime(FORMAT_SAMPLE, id),
+}));
 
 export function SettingsModal() {
+  const t = useT();
   const open = settingsStore((s) => s._settingsOpen);
   const currentStyle = useSetting("mapStyle");
   const mapThemeMode = useSetting("mapThemeMode");
@@ -55,6 +66,13 @@ export function SettingsModal() {
   const showBuses = useSetting("showBuses");
   const showTrams = useSetting("showTrams");
   const vehicleMotion = useSetting("vehicleMotion");
+  const languageChoice = useSetting("language");
+  const dateFormat = useSetting("dateFormat");
+  const dateFormatOptions = DATE_FORMATS.map((id) => ({
+    id,
+    label: formatDate(FORMAT_SAMPLE, id, t),
+  }));
+  const timeFormat = useSetting("timeFormat");
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,15 +115,15 @@ export function SettingsModal() {
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className="bg-surface relative z-10 max-h-[85dvh] w-[90vw] max-w-md overflow-auto rounded-2xl shadow-xl"
-            aria-label="Settings"
+            aria-label={t("settings.title")}
             aria-modal="true"
             aria-expanded="true"
           >
             <div className="bg-surface sticky top-0 flex items-center justify-between rounded-t-2xl px-4 py-2">
-              <h2 className="text-on-surface text-base font-bold">Settings</h2>
+              <h2 className="text-on-surface text-base font-bold">{t("settings.title")}</h2>
               <button
                 type="button"
-                aria-label="Close settings"
+                aria-label={t("settings.aria.close")}
                 aria-expanded={open}
                 aria-controls="settings-panel"
                 onClick={() => {
@@ -132,19 +150,68 @@ export function SettingsModal() {
 
             <div className="flex flex-col gap-6 px-5 pb-5">
               <SettingsCategory
-                title="Appearance"
+                title={t("settings.categories.language")}
                 sections={[
                   {
-                    title: "Theme Source",
-                    description: "Control when dark mode is active.",
+                    title: t("language.choiceTitle"),
+                    description: t("language.description"),
+                    body: (
+                      <div className="grid grid-cols-3 gap-2">
+                        {LANGUAGE_CHOICES.map((c) => (
+                          <ItemSelect
+                            key={c.id}
+                            selected={languageChoice === c.id}
+                            title={t(`language.${c.id}`)}
+                            description={t(`language.${c.id}Description`)}
+                            onSelect={() => {
+                              updateSetting("language", c.id);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ),
+                  },
+                  {
+                    title: t("settings.format.title"),
+                    description: t("settings.format.description"),
+                    body: (
+                      <div className="grid grid-cols-2 gap-2">
+                        <SettingsSelect
+                          label={t("settings.format.date")}
+                          value={dateFormat}
+                          options={dateFormatOptions}
+                          onChange={(value) => {
+                            updateSetting("dateFormat", value);
+                          }}
+                        />
+                        <SettingsSelect
+                          label={t("settings.format.time")}
+                          value={timeFormat}
+                          options={TIME_FORMAT_OPTIONS}
+                          onChange={(value) => {
+                            updateSetting("timeFormat", value);
+                          }}
+                        />
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+
+              <SettingsCategory
+                title={t("settings.categories.appearance")}
+                sections={[
+                  {
+                    title: t("settings.theme.sourceTitle"),
+                    description: t("settings.theme.sourceDescription"),
                     body: (
                       <div className="grid grid-cols-2 gap-2">
                         {UI_THEME_MODES.map((m) => (
                           <ItemSelect
                             key={m.id}
                             selected={uiThemeMode === m.id}
-                            title={m.label}
-                            description={m.description}
+                            title={t(`settings.theme.mode.${m.id}`)}
+                            description={t(`settings.theme.mode.${m.id}Description`)}
                             onSelect={() => {
                               updateSetting("uiThemeMode", m.id);
                             }}
@@ -156,17 +223,17 @@ export function SettingsModal() {
                   ...(uiThemeMode === "manual"
                     ? [
                         {
-                          title: "Theme",
-                          description: "Choose between light and dark appearance.",
+                          title: t("settings.theme.title"),
+                          description: t("settings.theme.titleDescription"),
                           body: (
                             <div className="grid grid-cols-2 gap-2">
-                              {UI_THEMES.map((t) => (
+                              {UI_THEMES.map((th) => (
                                 <ItemSelect
-                                  key={t.id}
-                                  selected={uiThemeManual === t.id}
-                                  title={t.label}
+                                  key={th.id}
+                                  selected={uiThemeManual === th.id}
+                                  title={t(`settings.theme.${th.id}`)}
                                   onSelect={() => {
-                                    updateSetting("uiThemeManual", t.id);
+                                    updateSetting("uiThemeManual", th.id);
                                   }}
                                 />
                               ))}
@@ -179,19 +246,19 @@ export function SettingsModal() {
               />
 
               <SettingsCategory
-                title="Map"
+                title={t("settings.categories.map")}
                 sections={[
                   {
-                    title: "Style Source",
-                    description: "Auto-switch between 3D and 3D Dark, or pick a style manually.",
+                    title: t("settings.map.styleSource.title"),
+                    description: t("settings.map.styleSource.description"),
                     body: (
                       <div className="grid grid-cols-3 gap-2">
                         {MAP_THEME_MODES.map((m) => (
                           <ItemSelect
                             key={m.id}
                             selected={mapThemeMode === m.id}
-                            title={m.label}
-                            description={m.description}
+                            title={t(`settings.theme.mode.${m.id}`)}
+                            description={t(`settings.theme.mode.${m.id}Description`)}
                             onSelect={() => {
                               updateSetting("mapThemeMode", m.id);
                             }}
@@ -203,15 +270,15 @@ export function SettingsModal() {
                   ...(mapThemeMode === "manual"
                     ? [
                         {
-                          title: "Style",
-                          description: "Choose the visual style for the map.",
+                          title: t("settings.map.style.title"),
+                          description: t("settings.map.style.description"),
                           body: (
                             <div className="grid grid-cols-2 gap-2">
                               {MAP_STYLES.map((s) => (
                                 <ItemSelect
                                   key={s.id}
                                   selected={currentStyle === s.id}
-                                  title={s.label}
+                                  title={t(`settings.map.style.${s.id}`)}
                                   onSelect={() => {
                                     updateSetting("mapStyle", s.id);
                                   }}
@@ -224,27 +291,27 @@ export function SettingsModal() {
                       ]
                     : []),
                   {
-                    title: "Displayed items",
-                    description: "Which features should be displayed on the map.",
+                    title: t("settings.map.visibility.title"),
+                    description: t("settings.map.visibility.description"),
                     body: (
                       <div className="grid grid-cols-2 gap-2">
                         <OnOffSwitch
                           enabled={showBuses}
-                          title="Buses"
+                          title={t("settings.map.vehicle.bus")}
                           onToggle={() => {
                             updateSetting("showBuses", !showBuses);
                           }}
                         />
                         <OnOffSwitch
                           enabled={showTrams}
-                          title="Trams"
+                          title={t("settings.map.vehicle.tram")}
                           onToggle={() => {
                             updateSetting("showTrams", !showTrams);
                           }}
                         />
                         <OnOffSwitch
                           enabled={showGbfsStations}
-                          title="Bajs Stations"
+                          title={t("settings.map.vehicle.bike")}
                           onToggle={() => {
                             updateSetting("showGbfsStations", !showGbfsStations);
                           }}
@@ -253,17 +320,16 @@ export function SettingsModal() {
                     ),
                   },
                   {
-                    title: "Vehicle Movement",
-                    description:
-                      "How vehicles move to a new position. Zoomed out or with reduced motion, vehicles always jump and show a trail.",
+                    title: t("settings.map.motion.title"),
+                    description: t("settings.map.motion.description"),
                     body: (
                       <div className="grid grid-cols-2 gap-2">
                         {VEHICLE_MOTIONS.map((m) => (
                           <ItemSelect
                             key={m.id}
                             selected={vehicleMotion === m.id}
-                            title={m.label}
-                            description={m.description}
+                            title={t(`settings.map.motion.${m.id}`)}
+                            description={t(`settings.map.motion.${m.id}Description`)}
                             onSelect={() => {
                               updateSetting("vehicleMotion", m.id);
                             }}
@@ -276,16 +342,19 @@ export function SettingsModal() {
               />
 
               <SettingsCategory
-                title="General"
+                title={t("settings.categories.general")}
                 sections={[
                   {
-                    title: "Keep Screen Awake",
-                    description:
-                      "Prevent your screen from turning off while tracking transit. Uses the browser Wake Lock API.",
+                    title: t("settings.general.awake.title"),
+                    description: t("settings.general.awake.description"),
                     body: (
                       <OnOffSwitch
                         enabled={wakeLockEnabled}
-                        title={wakeLockEnabled ? "Screen stays on" : "Screen can turn off"}
+                        title={
+                          wakeLockEnabled
+                            ? t("settings.general.awake.on")
+                            : t("settings.general.awake.off")
+                        }
                         onToggle={() => {
                           updateSetting("wakeLockEnabled", !wakeLockEnabled);
                         }}
@@ -293,8 +362,8 @@ export function SettingsModal() {
                     ),
                   },
                   {
-                    title: "Send Feedback",
-                    description: "Report a bug, request a feature, or share a thought.",
+                    title: t("settings.general.feedback.title"),
+                    description: t("settings.general.feedback.description"),
                     body: (
                       <button
                         type="button"
@@ -304,7 +373,7 @@ export function SettingsModal() {
                         }}
                         className="border-outline bg-surface text-on-surface-variant hover:bg-surface-hover flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors"
                       >
-                        <span>Open feedback form</span>
+                        <span>{t("settings.general.feedback.action")}</span>
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           width="16"
@@ -333,19 +402,20 @@ export function SettingsModal() {
 }
 
 export function SettingsButton() {
+  const t = useT();
   const open = settingsStore((s) => s._settingsOpen);
 
   return (
     <button
       type="button"
-      aria-label="Open settings"
+      aria-label={t("settings.aria.open")}
       onClick={() => {
         settingsStore.setState({ _settingsOpen: true });
       }}
       aria-expanded={open}
       aria-controls="settings-panel"
       className="bg-surface-overlay text-on-surface-variant hover:bg-surface flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg shadow-md backdrop-blur-sm transition-colors"
-      title="Settings"
+      title={t("settings.title")}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -372,6 +442,7 @@ function OnOffSwitch(props: {
   className?: string;
   onToggle: () => void;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -388,7 +459,10 @@ function OnOffSwitch(props: {
       )}
     >
       <div className="flex flex-col gap-1 text-left">
-        <span>{props.title ?? (props.enabled ? "Visible" : "Hidden")}</span>
+        <span>
+          {props.title ??
+            (props.enabled ? t("settings.state.visible") : t("settings.state.hidden"))}
+        </span>
         {props.description ? (
           <span className="text-on-surface-muted text-xs font-normal">{props.description}</span>
         ) : null}
@@ -401,7 +475,7 @@ function OnOffSwitch(props: {
             : "bg-surface-dim text-on-surface-muted",
         )}
       >
-        {props.enabled ? "On" : "Off"}
+        {props.enabled ? t("settings.state.on") : t("settings.state.off")}
       </span>
     </button>
   );
@@ -434,6 +508,33 @@ function ItemSelect(props: {
         <span className="text-on-surface-muted block text-xs font-normal">{props.description}</span>
       ) : null}
     </button>
+  );
+}
+
+function SettingsSelect<T extends string>(props: {
+  label: string;
+  value: T;
+  options: readonly { id: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <label className="text-on-surface-muted flex flex-col gap-1 text-xs">
+      {props.label}
+      <select
+        value={props.value}
+        onChange={(e) => {
+          const option = props.options.find((o) => o.id === e.target.value);
+          if (option) props.onChange(option.id);
+        }}
+        className="border-outline bg-surface text-on-surface hover:bg-surface-hover cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium tabular-nums transition-colors"
+      >
+        {props.options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

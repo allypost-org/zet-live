@@ -7,6 +7,28 @@ export type UiThemeMode = "device" | "time" | "map" | "manual";
 export type UiTheme = "light" | "dark";
 /** How vehicles move to a new position: move smoothly, or jump and show a trail. */
 export type VehicleMotion = "animate" | "trail";
+export type LanguageChoice = "auto" | "en" | "hr";
+// "mmm" is the short month name in the interface language.
+export const DATE_FORMATS = [
+  "dd/mm/yyyy",
+  "dd-mm-yyyy",
+  "dd.mm.yyyy.",
+  "mm/dd/yyyy",
+  "yyyy-mm-dd",
+  "d/m/yyyy",
+  "d-m-yyyy",
+  "d.m.yyyy.",
+  "m/d/yyyy",
+  "d mmm yyyy",
+  "d. mmm yyyy.",
+  "mmm d, yyyy",
+] as const;
+export type DateFormat = (typeof DATE_FORMATS)[number];
+export const TIME_FORMATS = ["HH:mm", "h:mm a"] as const;
+export type TimeFormat = (typeof TIME_FORMATS)[number];
+
+const dateFormatSchema = z.enum(DATE_FORMATS);
+const timeFormatSchema = z.enum(TIME_FORMATS);
 
 const DEFAULTS = {
   mapStyle: "3d" as MapStyleId,
@@ -18,6 +40,9 @@ const DEFAULTS = {
   showBuses: true,
   showTrams: true,
   vehicleMotion: "animate" as VehicleMotion,
+  language: "auto" as LanguageChoice,
+  dateFormat: "dd/mm/yyyy" as DateFormat,
+  timeFormat: "HH:mm" as TimeFormat,
 };
 
 export type Settings = typeof DEFAULTS & {
@@ -55,6 +80,9 @@ function loadSettings(): Settings {
         vehicleMotion: isValidVehicleMotion(parsed.vehicleMotion)
           ? parsed.vehicleMotion
           : DEFAULTS.vehicleMotion,
+        language: isValidLanguageChoice(parsed.language) ? parsed.language : DEFAULTS.language,
+        dateFormat: dateFormatSchema.safeParse(parsed.dateFormat).data ?? DEFAULTS.dateFormat,
+        timeFormat: timeFormatSchema.safeParse(parsed.timeFormat).data ?? DEFAULTS.timeFormat,
         _settingsOpen: false,
       };
     }
@@ -82,6 +110,10 @@ function isValidUiTheme(value: unknown): value is UiTheme {
 
 function isValidVehicleMotion(value: unknown): value is VehicleMotion {
   return value === "animate" || value === "trail";
+}
+
+function isValidLanguageChoice(value: unknown): value is LanguageChoice {
+  return value === "auto" || value === "en" || value === "hr";
 }
 
 function persist(settings: Settings) {
@@ -112,6 +144,9 @@ export const SYNC_SETTINGS_KEYS = [
   "showGbfsStations",
   "showBuses",
   "showTrams",
+  "language",
+  "dateFormat",
+  "timeFormat",
 ] as const;
 
 export type SyncSettings = Pick<Settings, (typeof SYNC_SETTINGS_KEYS)[number]>;
@@ -125,6 +160,9 @@ export const syncSettingsSchema = z.object({
   showGbfsStations: z.boolean(),
   showBuses: z.boolean(),
   showTrams: z.boolean(),
+  language: z.enum(["auto", "en", "hr"]).default("auto").catch("auto"),
+  dateFormat: dateFormatSchema.default(DEFAULTS.dateFormat).catch(DEFAULTS.dateFormat),
+  timeFormat: timeFormatSchema.default(DEFAULTS.timeFormat).catch(DEFAULTS.timeFormat),
 });
 
 export function serializeSync(state: Settings): SyncSettings {
@@ -137,6 +175,9 @@ export function serializeSync(state: Settings): SyncSettings {
     showGbfsStations: state.showGbfsStations,
     showBuses: state.showBuses,
     showTrams: state.showTrams,
+    language: state.language,
+    dateFormat: state.dateFormat,
+    timeFormat: state.timeFormat,
   };
 }
 

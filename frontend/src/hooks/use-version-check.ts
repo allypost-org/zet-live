@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { API_URL, FRONTEND_VERSION_ID } from "@/app/consts";
 import { frontendVersionIdSchema, versionResponseSchema } from "@/app/entity/v1/version";
 import { toast } from "sonner";
+import { getT } from "@/i18n";
 
 const CHECK_INTERVAL = 60 * 1000;
 const AUTO_REFRESH_DELAY = 15 * 1000;
@@ -107,14 +108,13 @@ export function useVersionCheck() {
       }
 
       function showUpdateToast(automatic: boolean) {
-        toast.info("New version available", {
+        const t = getT();
+        toast.info(t("update.available"), {
           id: UPDATE_TOAST_ID,
-          description: automatic
-            ? "The page will refresh automatically in 15 seconds."
-            : "Refresh the page to load the latest version.",
+          description: automatic ? t("update.autoRefresh") : t("update.refreshHint"),
           duration: automatic ? AUTO_REFRESH_DELAY + 1000 : Infinity,
           action: {
-            label: "Refresh now",
+            label: t("update.refresh"),
             onClick: () => {
               refreshPage(false);
             },

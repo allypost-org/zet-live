@@ -1,3 +1,5 @@
+import { getT } from "@/i18n";
+
 /** Indices match `GbfsStation::to_simple()` in the backend. */
 const SIMPLE_FIELD = {
   id: 0,
@@ -80,7 +82,7 @@ export class GbfsStationV1 {
   }
 
   public getDisplayName(): string {
-    return this.name?.trim() || `Station ${this.id}`;
+    return this.name?.trim() || getT()("entity.stationFallback", { id: this.id });
   }
 
   public getMapId() {

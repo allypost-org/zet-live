@@ -17,6 +17,8 @@ import {
   unlinkProvider,
 } from "@/hooks/use-auth";
 import { useSessions } from "@/hooks/use-sessions";
+import { useNodeT, useT } from "@/i18n";
+import { useDateTimeFormatter } from "@/utils/time";
 import { ProviderIcon, providerName } from "@/utils/provider-icons";
 import { Avatar, UserGlyph } from "@/components/avatar";
 import { cn } from "@/utils/style";
@@ -27,6 +29,8 @@ export function AuthModal() {
   const user = useCurrentUser();
   const identities = useIdentities();
   const providers = useAuthProviders();
+  const t = useT();
+  const nt = useNodeT();
 
   const [busy, setBusy] = useState<string | null>(null);
   const [pendingTransfer, setPendingTransfer] = useState<{
@@ -86,17 +90,17 @@ export function AuthModal() {
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className="bg-surface relative z-10 max-h-[85dvh] w-[90vw] max-w-md overflow-auto rounded-2xl shadow-xl"
-            aria-label="Account"
+            aria-label={t("auth.account")}
             aria-modal="true"
             aria-expanded="true"
           >
             <div className="bg-surface sticky top-0 flex items-center justify-between rounded-t-2xl px-4 py-2">
               <h2 className="text-on-surface text-base font-bold">
-                {status === "authenticated" ? "Account" : "Sign in"}
+                {status === "authenticated" ? t("auth.account") : t("auth.modal.title")}
               </h2>
               <button
                 type="button"
-                aria-label="Close"
+                aria-label={t("auth.modal.aria.close")}
                 onClick={handleClose}
                 disabled={busy !== null}
                 className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
@@ -120,7 +124,9 @@ export function AuthModal() {
 
             <div className="flex flex-col gap-4 px-5 pb-5">
               {status === "loading" ? (
-                <div className="text-on-surface-muted py-8 text-center text-sm">Loading…</div>
+                <div className="text-on-surface-muted py-8 text-center text-sm">
+                  {t("auth.modal.loading")}
+                </div>
               ) : status === "authenticated" && user ? (
                 <>
                   <div className="flex items-center gap-3">
@@ -132,7 +138,7 @@ export function AuthModal() {
                     />
                     <div className="min-w-0">
                       <p className="text-on-surface truncate text-sm font-semibold">
-                        {user.displayName ?? "Account"}
+                        {user.displayName ?? t("auth.account")}
                       </p>
                       {user.email ? (
                         <p className="text-on-surface-muted truncate text-xs">{user.email}</p>
@@ -142,7 +148,7 @@ export function AuthModal() {
 
                   <section className="flex flex-col gap-2">
                     <h3 className="text-on-surface-muted text-xs font-semibold tracking-wide uppercase">
-                      Linked providers
+                      {t("auth.modal.linkProvidersTitle")}
                     </h3>
                     <ul className="flex flex-col gap-2">
                       {identities.map((id) => (
@@ -160,7 +166,9 @@ export function AuthModal() {
                           <div className="min-w-0 flex-1">
                             <span className="text-on-surface block truncate text-sm font-semibold">
                               {id.displayName ?? (
-                                <em className="text-on-surface-muted font-normal">No name</em>
+                                <em className="text-on-surface-muted font-normal">
+                                  {t("auth.modal.noName")}
+                                </em>
                               )}
                             </span>
                             {id.email ? (
@@ -180,10 +188,10 @@ export function AuthModal() {
                             className="text-on-surface-muted hover:text-danger cursor-pointer rounded px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-30"
                           >
                             {busy === `unlink:${id.provider}` ? (
-                              "Removing…"
+                              t("auth.modal.removing")
                             ) : (
                               <span className="inline-block text-right capitalize">
-                                Unlink
+                                {t("auth.modal.removeProvider")}
                                 <br />
                                 {id.provider}
                               </span>
@@ -193,9 +201,7 @@ export function AuthModal() {
                       ))}
                     </ul>
                     {!canUnlink ? (
-                      <p className="text-on-surface-faint text-xs">
-                        Add another provider before unlinking this one.
-                      </p>
+                      <p className="text-on-surface-faint text-xs">{t("auth.modal.removeHint")}</p>
                     ) : null}
                   </section>
 
@@ -204,7 +210,7 @@ export function AuthModal() {
                   {providers.filter((p) => !linkedIds.has(p.id)).length > 0 ? (
                     <section className="flex flex-col gap-2">
                       <h3 className="text-on-surface-muted text-xs font-semibold tracking-wide uppercase">
-                        Link another provider
+                        {t("auth.modal.linkAnother")}
                       </h3>
                       {providers
                         .filter((p) => !linkedIds.has(p.id))
@@ -212,7 +218,7 @@ export function AuthModal() {
                           <ProviderButton
                             key={p.id}
                             providerId={p.id}
-                            label={`Link ${p.name}`}
+                            label={t("auth.modal.linkProvider", { provider: p.name })}
                             busy={busy === `link:${p.id}`}
                             onClick={() => {
                               void withBusy(`link:${p.id}`, async () => {
@@ -230,13 +236,12 @@ export function AuthModal() {
                   {pendingTransfer ? (
                     <div className="border-primary bg-primary-container text-on-primary-container flex flex-col gap-2 rounded-lg border p-3">
                       <p className="text-on-primary-container text-sm">
-                        This <strong>{providerName(pendingTransfer.provider)}</strong> account is
-                        already linked to another account. Transfer it to this account?
+                        {nt("auth.modal.transferPrompt", {
+                          name: <strong>{providerName(pendingTransfer.provider)}</strong>,
+                        })}
                       </p>
                       <p className="text-on-surface-muted text-xs">
-                        The other account will be removed if it has no other sign-in methods. Its
-                        feedback history (submitted messages, name, and contact info) will be merged
-                        into your account and become visible in your “My feedback” list.
+                        {t("auth.modal.transferDetail")}
                       </p>
                       <div className="flex justify-end gap-2">
                         <button
@@ -247,7 +252,7 @@ export function AuthModal() {
                           }}
                           className="text-on-surface-variant cursor-pointer rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
                         >
-                          Cancel
+                          {t("auth.modal.cancel")}
                         </button>
                         <button
                           type="button"
@@ -263,7 +268,9 @@ export function AuthModal() {
                           }}
                           className="bg-primary text-on-primary cursor-pointer rounded px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
                         >
-                          {busy === "transfer" ? "Transferring…" : "Transfer"}
+                          {busy === "transfer"
+                            ? t("auth.modal.transferBusy")
+                            : t("auth.modal.transfer")}
                         </button>
                       </div>
                     </div>
@@ -280,15 +287,16 @@ export function AuthModal() {
                     }}
                     className="border-outline text-on-surface-variant hover:bg-surface-hover mt-2 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {busy === "logout" ? "Signing out…" : "Sign out"}
+                    {busy === "logout" ? t("auth.modal.signingOut") : t("auth.modal.signOut")}
                   </button>
 
                   {confirmDelete ? (
                     <div className="border-danger/40 bg-danger-container flex flex-col gap-2 rounded-lg border p-3">
-                      <p className="text-on-surface text-sm font-medium">Delete account?</p>
+                      <p className="text-on-surface text-sm font-medium">
+                        {t("auth.modal.deleteConfirmTitle")}
+                      </p>
                       <p className="text-on-surface-muted text-xs">
-                        This permanently removes your account, linked providers, sessions, and
-                        synced settings. Feedback you submitted stays but is anonymized.
+                        {t("auth.modal.deleteDetail")}
                       </p>
                       <div className="flex justify-end gap-2">
                         <button
@@ -299,7 +307,7 @@ export function AuthModal() {
                           }}
                           className="text-on-surface-variant cursor-pointer rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
                         >
-                          Cancel
+                          {t("auth.modal.cancel")}
                         </button>
                         <button
                           type="button"
@@ -315,7 +323,7 @@ export function AuthModal() {
                           }}
                           className="bg-danger text-on-primary cursor-pointer rounded px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
                         >
-                          {busy === "delete" ? "Deleting…" : "Delete account"}
+                          {busy === "delete" ? t("auth.modal.deleteBusy") : t("auth.modal.delete")}
                         </button>
                       </div>
                     </div>
@@ -328,21 +336,19 @@ export function AuthModal() {
                       }}
                       className="text-danger hover:bg-surface-hover mt-1 cursor-pointer rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Delete account
+                      {t("auth.modal.delete")}
                     </button>
                   )}
                 </>
               ) : (
                 <>
-                  <p className="text-on-surface-muted text-sm">
-                    Sign in to sync your settings across devices. Accounts use social login only.
-                  </p>
+                  <p className="text-on-surface-muted text-sm">{t("auth.modal.intro")}</p>
                   <div className="flex flex-col gap-2">
                     {providers.map((p) => (
                       <ProviderButton
                         key={p.id}
                         providerId={p.id}
-                        label={`Continue with ${p.name}`}
+                        label={t("auth.modal.continueWith", { provider: p.name })}
                         busy={busy === p.id}
                         onClick={() => {
                           void withBusy(p.id, () => loginWith(p.id));
@@ -363,17 +369,19 @@ export function AuthModal() {
 function SessionsSection() {
   const { sessions, loading, currentSessionId, revoke, revokeAllOthers } = useSessions();
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
+  const t = useT();
+  const format = useDateTimeFormatter();
   const hasOtherSessions = sessions.some((s) => s.id !== currentSessionId);
 
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-on-surface-muted text-xs font-semibold tracking-wide uppercase">
-        Sessions
+        {t("auth.modal.sessionsTitle")}
       </h3>
       {loading ? (
-        <p className="text-on-surface-muted py-2 text-sm">Loading…</p>
+        <p className="text-on-surface-muted py-2 text-sm">{t("auth.modal.loading")}</p>
       ) : sessions.length === 0 ? (
-        <p className="text-on-surface-muted py-2 text-sm">No active sessions.</p>
+        <p className="text-on-surface-muted py-2 text-sm">{t("auth.modal.noActiveSessions")}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {sessions.map((s) => {
@@ -385,11 +393,11 @@ function SessionsSection() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-on-surface truncate text-sm font-medium">
-                    {s.userAgent || "Unknown device"}
+                    {s.userAgent || t("auth.modal.unknownDevice")}
                   </span>
                   {isCurrent ? (
                     <span className="bg-primary-container text-on-primary-container shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold">
-                      This device
+                      {t("auth.modal.thisDevice")}
                     </span>
                   ) : (
                     <button
@@ -397,12 +405,13 @@ function SessionsSection() {
                       onClick={() => void revoke(s.id)}
                       className="text-on-surface-muted hover:text-danger shrink-0 cursor-pointer rounded px-2 py-0.5 text-xs font-medium transition-colors"
                     >
-                      Revoke
+                      {t("auth.modal.revokeSession")}
                     </button>
                   )}
                 </div>
                 <span className="text-on-surface-muted text-xs">
-                  {s.ip || "IP unknown"} · {new Date(s.createdAt).toLocaleString()}
+                  {s.ip || t("auth.modal.ipUnknown")} {"\u00B7"}{" "}
+                  {format.dateTime(new Date(s.createdAt))}
                 </span>
               </li>
             );
@@ -412,10 +421,11 @@ function SessionsSection() {
       {hasOtherSessions ? (
         confirmRevokeAll ? (
           <div className="border-danger/40 bg-danger-container flex flex-col gap-2 rounded-lg border p-3">
-            <p className="text-on-surface text-sm font-medium">Revoke all other sessions?</p>
+            <p className="text-on-surface text-sm font-medium">
+              {t("auth.modal.revokeAllConfirm")}
+            </p>
             <p className="text-on-surface-muted text-xs">
-              This signs out every other device/browser signed into your account. This device stays
-              signed in.
+              {t("auth.modal.revokeAllConfirmDetail")}
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -425,7 +435,7 @@ function SessionsSection() {
                 }}
                 className="text-on-surface-variant cursor-pointer rounded px-3 py-1.5 text-sm font-medium transition-colors"
               >
-                Cancel
+                {t("auth.modal.cancel")}
               </button>
               <button
                 type="button"
@@ -436,7 +446,7 @@ function SessionsSection() {
                 }}
                 className="bg-danger text-on-primary cursor-pointer rounded px-3 py-1.5 text-sm font-semibold transition-colors"
               >
-                Revoke all
+                {t("auth.modal.revokeAll")}
               </button>
             </div>
           </div>
@@ -448,7 +458,7 @@ function SessionsSection() {
             }}
             className="text-on-surface-muted hover:text-danger cursor-pointer rounded-lg px-2 py-1.5 text-left text-xs font-medium transition-colors"
           >
-            Sign out all other sessions
+            {t("auth.modal.signOutAllOthers")}
           </button>
         )
       ) : null}
@@ -462,6 +472,7 @@ function ProviderButton(props: {
   busy: boolean;
   onClick: () => void;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -474,7 +485,7 @@ function ProviderButton(props: {
       )}
     >
       <ProviderIcon id={props.providerId} />
-      <span>{props.busy ? "Please wait…" : props.label}</span>
+      <span>{props.busy ? t("auth.modal.pleaseWait") : props.label}</span>
     </button>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "@/i18n";
 import { useStore } from "@/store";
 
 type Step = {
@@ -35,6 +36,7 @@ function CheckIcon({ done }: { done: boolean }) {
 }
 
 export function LoadingScreen() {
+  const t = useT();
   const wsConnected = useStore((s) => s.wsConnected);
   const lastUpdate = useStore((s) => s.lastUpdate);
   const simpleStops = useStore((s) => s.simpleStops);
@@ -48,10 +50,10 @@ export function LoadingScreen() {
   const stopsLoaded = Object.keys(simpleStops).length > 0;
 
   const steps: Step[] = [
-    { label: "Connecting to API", done: wsConnected },
-    { label: "Loading vehicles", done: vehiclesLoaded },
-    { label: "Loading stops", done: stopsLoaded, optional: true },
-    { label: "Loading map", done: mapReady },
+    { label: t("loading.connecting"), done: wsConnected },
+    { label: t("loading.vehicles"), done: vehiclesLoaded },
+    { label: t("loading.stops"), done: stopsLoaded, optional: true },
+    { label: t("loading.map"), done: mapReady },
   ];
 
   const allDone = steps.every((s) => s.done || s.optional);

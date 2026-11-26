@@ -38,6 +38,8 @@ import { useSelectedStopTripIds } from "@/hooks/use-selected-stop-trips";
 import { boundsFromPoints } from "@/utils/map";
 import { useFeatureFlag } from "@/feature-flags-store";
 import { useSetting } from "./settings";
+import { renderText, useLanguage, useNodeT, useT } from "@/i18n";
+import { useDateTimeFormatter } from "@/utils/time";
 import {
   PLAUSIBLE_API_URL,
   PLAUSIBLE_SCRIPT_URL,
@@ -66,6 +68,11 @@ export function App() {
   const wakeLockEnabled = useSetting("wakeLockEnabled");
   useWakeLock(wakeLockEnabled);
 
+  const language = useLanguage();
+  const format = useDateTimeFormatter();
+  const t = useT();
+  const tNode = useNodeT();
+
   const stopBoardFlag = useFeatureFlag("stop_departures");
 
   const selection = useStore((s) => s.selection);
@@ -86,9 +93,10 @@ export function App() {
     selection?.type === "gbfs-station"
       ? (gbfsStations.get(`gbfs-station-${selection.id}`) ?? null)
       : null;
+  const stopName = stopSelection ? renderText(stopSelection.name, t) : null;
   const selectedStop =
-    selection?.type === "stop" && stopSelection
-      ? { name: stopSelection.name, ids: selection.ids, routes: stopSelection.routes }
+    selection?.type === "stop" && stopSelection && stopName !== null
+      ? { name: stopName, ids: selection.ids, routes: stopSelection.routes }
       : null;
 
   const tripStopTimes = vehicleSelection?.tripStopTimes ?? null;
@@ -107,19 +115,18 @@ export function App() {
   const followEnabled = vehicleSelection?.followEnabled ?? false;
 
   const selectionType = selection?.type ?? null;
-  const stopName = stopSelection?.name ?? null;
   const documentSubject = useMemo(() => {
     if (selectedVehicle) {
       return `${selectedVehicle.routeId} ${selectedVehicle.getDisplayName()}`;
     }
     if (selectionType === "stop" && stopName) {
-      return `${stopName} (stanica)`;
+      return t("documentSubject.stop", { name: stopName });
     }
     if (selectedGbfsStation) {
-      return `${selectedGbfsStation.getDisplayName()} [Bajs]`;
+      return t("documentSubject.bikes", { name: selectedGbfsStation.getDisplayName() });
     }
-    return "Trenutno Stanje";
-  }, [selectedVehicle, selectedGbfsStation, selectionType, stopName]);
+    return t("documentSubject.default");
+  }, [t, selectedVehicle, selectedGbfsStation, selectionType, stopName]);
   const documentTitle = `${documentSubject} | ${SITE_TITLE}`;
 
   const nextStopIndex = selectedVehicle
@@ -156,7 +163,7 @@ export function App() {
     ? [
         {
           key: "share",
-          label: "Share",
+          label: t("actions.share"),
           icon: <ShareIcon />,
           onClick: () => {
             const params = new URLSearchParams();
@@ -166,7 +173,7 @@ export function App() {
         },
         {
           key: "center",
-          label: "Center",
+          label: t("actions.center"),
           icon: <CenterIcon />,
           onClick: () => {
             fitStopBounds(false);
@@ -174,7 +181,7 @@ export function App() {
         },
         {
           key: "fit-all",
-          label: "Fit all",
+          label: t("actions.fitAll"),
           icon: <FitAllIcon />,
           onClick: () => {
             fitStopBounds(true);
@@ -201,7 +208,7 @@ export function App() {
       const untilDate = new Date(selectedVehicle.nextStopArrivalTime * 1000);
       const secondsUntil = selectedVehicle.nextStopArrivalTime - Date.now() / 1000;
       const minutes = Math.round(secondsUntil / 60);
-      const minutesStr = minutes <= 0 ? null : minutes === 1 ? "1 min" : `${minutes} min`;
+      const minutesStr = minutes <= 0 ? null : t("time.minutes", { count: minutes });
       const stopName = selectedVehicle.nextStopId
         ? displayedStops.find((s) => s.ids.includes(selectedVehicle.nextStopId!))?.name
         : null;
@@ -209,27 +216,27 @@ export function App() {
       const stopLabel = stopName ? (
         <>
           {" "}
-          is <strong>{stopName}</strong>
+          {t("minimized.nextStopIs")} <strong>{stopName}</strong>
         </>
       ) : (
         ""
       );
       const timeLabel = minutesStr ? (
         <>
-          in{" "}
+          {t("minimized.arrivalIn")}{" "}
           <strong>
-            <time dateTime={untilDate.toISOString()} title={untilDate.toLocaleString()}>
+            <time dateTime={untilDate.toISOString()} title={format.dateTime(untilDate)}>
               {minutesStr}
             </time>
           </strong>
         </>
       ) : (
-        <strong>now</strong>
+        <strong>{t("time.now")}</strong>
       );
 
       minimizedBody = (
         <span className="text-on-surface-muted text-xs">
-          Next stop{stopLabel} arriving {timeLabel}
+          {tNode("minimized.vehicleNextStop", { stop: stopLabel, time: timeLabel })}
         </span>
       );
     }
@@ -252,10 +259,13 @@ export function App() {
       if (firstArrival) {
         const secondsUntil = (firstArrival.arrivalTime!.getTime() - Date.now()) / 1000;
         const minutes = Math.round(secondsUntil / 60);
-        const label = minutes <= 0 ? "now" : minutes === 1 ? "1 min" : `${minutes} min`;
+        const label =
+          minutes <= 0
+            ? t("time.now")
+            : `${t("minimized.arrivalIn")} ${t("time.minutes", { count: minutes })}`;
         minimizedBody = (
           <span className="text-on-surface-muted text-xs">
-            Route {firstArrival.routeId} in {label}
+            {t("minimized.stopNextDeparture", { route: firstArrival.routeId, time: label })}
           </span>
         );
       }
@@ -263,15 +273,15 @@ export function App() {
   } else if (selectedGbfsStation) {
     sheetTitle = (
       <span className="text-on-surface truncate text-sm font-bold">
-        <span className="font-light">[Bajs]</span>&nbsp;
+        <span className="font-light">{t("sheet.bikeBadge")}</span>&nbsp;
         <span className="capitalize">{selectedGbfsStation.getDisplayName().toLowerCase()}</span>
       </span>
     );
     const bikes = selectedGbfsStation.numBikesAvailable ?? 0;
     minimizedBody = (
       <span className="text-on-surface-muted text-xs">
-        {bikes} {bikes === 1 ? "bike" : "bikes"} available
-        {selectedGbfsStation.isRenting ? "" : " · not renting"}
+        {t("minimized.bikesAvailable", { count: bikes })}
+        {selectedGbfsStation.isRenting ? "" : ` \u00B7 ${t("minimized.notRenting")}`}
       </span>
     );
   }
@@ -290,6 +300,11 @@ export function App() {
 
     document.head.appendChild(script);
   }, []);
+
+  // `index.html` starts at `lang="hr"`, so this must also run on first render.
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   return (
     <>
