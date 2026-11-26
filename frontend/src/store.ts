@@ -182,7 +182,7 @@ export const useStore = create<StoreState>()(
           route: null,
           tripStopTimes: null,
           fetchError: null,
-          followEnabled: false,
+          followEnabled: true,
         },
         stopSelection: null,
       });

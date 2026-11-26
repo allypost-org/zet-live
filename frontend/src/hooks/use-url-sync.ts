@@ -31,9 +31,7 @@ function applyUrlParams(params: URLSearchParams) {
 
   if (vehicleParam) {
     useStore.getState().selectVehicle(vehicleParam, tripParam ?? "");
-    if (followParam === "1") {
-      useStore.getState().setFollowEnabled(true);
-    }
+    useStore.getState().setFollowEnabled(followParam === "1");
   } else if (stopParams.length > 0) {
     useStore.getState().selectStop(stopParams);
   } else if (stationParam) {
@@ -120,9 +118,7 @@ export function useUrlSync() {
       const follow = params.get("follow") === "1";
       isRestoringRef.current = true;
       useStore.getState().selectVehicle(vehicleParam, tripParam ?? "");
-      if (follow) {
-        useStore.getState().setFollowEnabled(true);
-      }
+      useStore.getState().setFollowEnabled(follow);
       isRestoringRef.current = false;
     } else if (stopParams.length > 0) {
       if (!hasStops) return;
