@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { MapRef } from "react-map-gl/maplibre";
 import type { GeoJSONSource, Map as MaplibreMap } from "maplibre-gl";
 import type { Feature, FeatureCollection, Point } from "geojson";
@@ -27,9 +27,10 @@ const MIN_STEP_PIXELS = 2;
 /** Minimum time between two updates of the source. */
 const MIN_UPDATE_INTERVAL_MS = 1000 / 30;
 
-type Position = [number, number];
+export type Position = [number, number];
 
-type Track = {
+/** A linear move of one vehicle from `from` to `to`. Times use `performance.now()`. */
+export type Track = {
   from: Position;
   to: Position;
   start: number;
@@ -40,11 +41,11 @@ const STILL = { start: 0, duration: 0 };
 
 export type VehicleFeatureCollection = FeatureCollection<Point, { id: string }>;
 
-function isMoving(track: Track, now: number): boolean {
+export function isMoving(track: Track, now: number): boolean {
   return now - track.start < track.duration;
 }
 
-function positionAt(track: Track, now: number): Position {
+export function positionAt(track: Track, now: number): Position {
   if (!isMoving(track, now)) return track.to;
   const t = (now - track.start) / track.duration;
   return [
@@ -126,7 +127,8 @@ function largestVisibleStep(
  * vehicle with a new position moves from its shown position to the new one.
  * The move takes the vehicle's value in `moveIntervals`, so that it ends when
  * the next position arrives. With "trail", vehicles jump to the new position.
- * Features are matched by `properties.id`.
+ * Features are matched by `properties.id`. Returns a function that gives the
+ * current track of a vehicle.
  */
 export function useAnimatedVehicleSource(
   mapRef: { current: MapRef | null },
@@ -230,4 +232,6 @@ export function useAnimatedVehicleSource(
       frameId.current = null;
     };
   }, [mapRef, sourceId, data, moveIntervals, ready, motion]);
+
+  return useCallback((id: string): Track | undefined => tracks.current.get(id), []);
 }

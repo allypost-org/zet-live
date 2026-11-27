@@ -44,7 +44,7 @@ import { useFeatureFlag } from "@/feature-flags-store";
 import { useSelectedStopTripIds } from "@/hooks/use-selected-stop-trips";
 import { ensureStopArrowIcons } from "@/utils/stop-icons";
 import { useAnimatedVehicleSource, useVehicleMotion } from "@/hooks/use-animated-vehicle-source";
-import { DEFAULT_MOVE_INTERVAL_MS } from "@/app/vehicle-move-interval";
+import { useFollowVehicle } from "@/hooks/use-follow-vehicle";
 
 /** Layers that draw one stop. A click on them selects that stop. */
 const STOP_MARKER_LAYER_IDS = ["route-stop-dot", "route-stop-arrow"];
@@ -391,30 +391,6 @@ export function MapContainer() {
   }, []);
 
   useEffect(() => {
-    if (selection?.type !== "vehicle") return;
-    if (!vehicleSelection?.followEnabled) return;
-    const vehicle = vehicles.get(`vehicle-${selection.id}`);
-    if (!vehicle) return;
-
-    const map = mapRef.current?.getMap();
-    if (!map) return;
-
-    const offset = calculateLatOffset(mapRef.current?.getMap());
-
-    const center: [number, number] = [vehicle.lng, vehicle.lat - offset];
-    map.easeTo(
-      vehicleMotion === "animate"
-        ? // Linear, the same as the vehicle, so that the vehicle stays in the centre.
-          {
-            center,
-            duration: vehicleMoveIntervals.get(selection.id) ?? DEFAULT_MOVE_INTERVAL_MS,
-            easing: (t) => t,
-          }
-        : { center, duration: 500 },
-    );
-  }, [selection, vehicleSelection, vehicles, vehicleMoveIntervals, vehicleMotion]);
-
-  useEffect(() => {
     const map = mapRef.current?.getMap();
     if (!map) {
       return;
@@ -509,12 +485,18 @@ export function MapContainer() {
       ),
     [vehicles, selectedVehicleId, selectedStopTripIds, searchMatchedVehicleIds],
   );
-  useAnimatedVehicleSource(
+  const getVehicleTrack = useAnimatedVehicleSource(
     mapRef,
     "vehicles",
     vehiclesGeoJson,
     vehicleMoveIntervals,
     iconsReady,
+    vehicleMotion,
+  );
+  useFollowVehicle(
+    mapRef,
+    vehicleSelection?.followEnabled ? selectedVehicleId : null,
+    getVehicleTrack,
     vehicleMotion,
   );
 
