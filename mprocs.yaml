@@ -1,0 +1,19 @@
+procs:
+  app:
+    cmd:
+      - just
+      - backend
+      - dev-watch
+      - server
+
+  frontend:
+    cmd:
+      - just
+      - frontend
+      - build-watch
+
+  frontend-admin:
+    cmd:
+      - just
+      - frontend-admin
+      - build-watch
