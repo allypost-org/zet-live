@@ -43,7 +43,12 @@ import type { StopV1 } from "@/app/entity/v1/stop";
 import { useFeatureFlag } from "@/feature-flags-store";
 import { useSelectedStopTripIds } from "@/hooks/use-selected-stop-trips";
 import { ensureStopArrowIcons } from "@/utils/stop-icons";
-import { useAnimatedVehicleSource, useVehicleMotion } from "@/hooks/use-animated-vehicle-source";
+import {
+  useAnimatedVehicleSource,
+  useVehicleMotion,
+  type VehicleMove,
+} from "@/hooks/use-animated-vehicle-source";
+import { DEFAULT_MOVE_INTERVAL_MS } from "@/app/vehicle-move-interval";
 import { useFollowVehicle } from "@/hooks/use-follow-vehicle";
 
 /** Layers that draw one stop. A click on them selects that stop. */
@@ -139,6 +144,21 @@ function buildVehiclesGeoJson(
       };
     }),
   };
+}
+
+function buildVehicleMoves(
+  vehicles: Map<string, VehicleV1>,
+  moveIntervals: ReadonlyMap<string, number>,
+): Map<string, VehicleMove> {
+  const moves = new Map<string, VehicleMove>();
+  for (const v of vehicles.values()) {
+    moves.set(v.id, {
+      duration: moveIntervals.get(v.id) ?? DEFAULT_MOVE_INTERVAL_MS,
+      from: v.prevLat !== null && v.prevLng !== null ? [v.prevLng, v.prevLat] : null,
+      via: v.path,
+    });
+  }
+  return moves;
 }
 
 function buildDeltaMoveFeatures(deltaMoveLines: VehicleLocationPair[]) {
@@ -485,11 +505,15 @@ export function MapContainer() {
       ),
     [vehicles, selectedVehicleId, selectedStopTripIds, searchMatchedVehicleIds],
   );
+  const vehicleMoves = useMemo(
+    () => buildVehicleMoves(vehicles, vehicleMoveIntervals),
+    [vehicles, vehicleMoveIntervals],
+  );
   const getVehicleTrack = useAnimatedVehicleSource(
     mapRef,
     "vehicles",
     vehiclesGeoJson,
-    vehicleMoveIntervals,
+    vehicleMoves,
     iconsReady,
     vehicleMotion,
   );
@@ -497,7 +521,6 @@ export function MapContainer() {
     mapRef,
     vehicleSelection?.followEnabled ? selectedVehicleId : null,
     getVehicleTrack,
-    vehicleMotion,
   );
 
   const deltaMoveFeatures = useMemo(() => buildDeltaMoveFeatures(deltaMoveLines), [deltaMoveLines]);

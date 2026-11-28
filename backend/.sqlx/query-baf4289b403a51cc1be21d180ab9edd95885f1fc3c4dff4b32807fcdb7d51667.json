@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT ON (trip_key) trip_key AS \"trip_key!\", shape_id AS \"shape_id!\"\n                   FROM gtfs_trips\n                   WHERE trip_key = ANY($1) AND shape_id IS NOT NULL\n                   ORDER BY trip_key, trip_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "trip_key!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "trip_key"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "shape_id!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_trips",
+            "name": "shape_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "baf4289b403a51cc1be21d180ab9edd95885f1fc3c4dff4b32807fcdb7d51667"
+}

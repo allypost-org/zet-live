@@ -25,6 +25,16 @@ static CACHE: OnceLock<RwLock<Arc<ScheduleOffsets>>> = OnceLock::new();
 pub struct ScheduleOffsets(HashMap<String, Box<[(i64, i64)]>>);
 
 impl ScheduleOffsets {
+    #[cfg(test)]
+    pub fn from_trips(trips: impl IntoIterator<Item = (String, Vec<(i64, i64)>)>) -> Self {
+        Self(
+            trips
+                .into_iter()
+                .map(|(key, stops)| (key, stops.into_boxed_slice()))
+                .collect(),
+        )
+    }
+
     /// Look up `arrival_time_seconds` for a `(trip_key, stop_sequence)`.
     pub fn get(&self, trip_key: &str, stop_sequence: i64) -> Option<i64> {
         self.0.get(trip_key).and_then(|stops| {

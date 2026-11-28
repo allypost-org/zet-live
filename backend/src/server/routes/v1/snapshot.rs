@@ -7,6 +7,7 @@ use super::_entity::vehicle::Vehicle;
 // Fifteen bindings per vehicle keep each batch below PostgreSQL's parameter limit.
 const BATCH_SIZE: usize = 2_048;
 
+#[derive(Debug)]
 pub(super) struct LiveStopTimeInfo {
     pub stop_id: String,
     pub stop_sequence: u64,

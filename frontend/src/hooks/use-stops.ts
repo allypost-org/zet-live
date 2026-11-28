@@ -71,7 +71,6 @@ const moveIntervalState = createMoveIntervalState();
 
 export function processMessage(message: V1Message) {
   if (typeof message.d === "object" && "vehicles" in message.d) {
-    const rawVehicles = message.d.vehicles;
     const currentMap = useStore.getState().vehicles;
     const locationPairs: VehicleLocationPair[] = [];
 
@@ -82,9 +81,8 @@ export function processMessage(message: V1Message) {
 
     const newMap = new Map<string, VehicleV1>();
 
-    for (const raw of rawVehicles) {
-      const row = raw as (string | number)[];
-      const vehicle = VehicleV1.fromSimple(row);
+    for (const data of message.d.vehicles) {
+      const vehicle = new VehicleV1(data);
       const key = vehicle.getMapId();
 
       const prev = currentMap.get(key) ?? vehicle;

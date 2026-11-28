@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const versionedSchema = <TData, TVersion extends number>(
   version: TVersion,
-  dataSchema: z.ZodSchema<TData>,
+  dataSchema: z.ZodType<TData, z.ZodTypeDef, unknown>,
 ) =>
   z.object({
     v: z.literal(version),

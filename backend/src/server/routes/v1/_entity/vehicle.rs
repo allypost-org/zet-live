@@ -1,6 +1,8 @@
 use crate::{
     entity::util::mixed_value::MixedValue,
-    proto::gtfs_realtime::data::transit_realtime::VehiclePosition,
+    proto::{
+        gtfs_realtime::data::transit_realtime::VehiclePosition, gtfs_schedule::data::geo::LatLng,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -32,6 +34,9 @@ pub struct Vehicle {
     pub next_stop_arrival_delay: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_stop_arrival_time: Option<i64>,
+    /// Shape points between the previous and the current position, in travel order.
+    #[serde(skip)]
+    pub path: Vec<LatLng>,
 }
 
 impl Vehicle {
@@ -62,6 +67,16 @@ impl Vehicle {
             self.trip_headsign
                 .as_deref()
                 .map_or(MixedValue::null(), MixedValue::from),
+            if self.path.is_empty() {
+                MixedValue::null()
+            } else {
+                MixedValue::F64List(
+                    self.path
+                        .iter()
+                        .flat_map(|point| [point.lng, point.lat])
+                        .collect(),
+                )
+            },
         ]
     }
 }
@@ -105,6 +120,7 @@ impl TryFrom<&VehiclePosition> for Vehicle {
             next_stop_sequence: None,
             next_stop_arrival_delay: None,
             next_stop_arrival_time: None,
+            path: Vec::new(),
         })
     }
 }

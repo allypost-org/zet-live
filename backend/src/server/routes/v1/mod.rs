@@ -8,7 +8,7 @@ use std::{
     time::{Instant, SystemTime},
 };
 
-use _entity::{gbfs::GbfsStation, vehicle::Vehicle};
+use _entity::gbfs::GbfsStation;
 use axum::{
     Router,
     body::Bytes,
@@ -18,7 +18,10 @@ use axum::{
 use tokio::sync::{RwLock, broadcast, watch};
 use tracing::{error, trace};
 
-use self::snapshot::LiveStopTimeInfo;
+use self::{
+    live_vehicles::{FeedContext, LiveVehicles, PreviousPosition},
+    vehicle_tracker::VehicleTracker,
+};
 use crate::{
     admin::settings::GlobalNotice,
     database::Database,
@@ -27,6 +30,7 @@ use crate::{
         gbfs::fetcher::wait_for_gbfs_update,
         gtfs_realtime::{data::transit_realtime::FeedMessage, fetcher::subscribe_feed},
         gtfs_schedule::data::{
+            geo::LatLng,
             stop_bearing::{Bearing, load_stop_bearings},
             trip_key,
         },
@@ -41,10 +45,12 @@ mod capabilities;
 mod feed;
 mod feedback;
 mod gbfs;
+mod live_vehicles;
 mod next_stop;
 mod schedule;
 mod settings;
 mod snapshot;
+mod vehicle_tracker;
 mod vehicles;
 pub mod ws;
 
@@ -213,10 +219,17 @@ pub fn broadcast_feature_flags_changed() {
 async fn feed_listener(app_state: Arc<V1AppState>) {
     let mut feeds = subscribe_feed();
     let mut active_stops_cache = None;
+    let mut vehicle_tracker = VehicleTracker::default();
     loop {
         let feed = feeds.borrow_and_update().clone();
         if let Some(feed) = feed {
-            process_feed(app_state.clone(), feed, &mut active_stops_cache).await;
+            process_feed(
+                app_state.clone(),
+                feed,
+                &mut active_stops_cache,
+                &mut vehicle_tracker,
+            )
+            .await;
         }
         if feeds.changed().await.is_err() {
             return;
@@ -418,6 +431,7 @@ async fn process_feed(
     app_state: Arc<V1AppState>,
     feed: Arc<FeedMessage>,
     active_stops_cache: &mut Option<ActiveStopsCache>,
+    vehicle_tracker: &mut VehicleTracker,
 ) {
     let active_stops_feed = feed.clone();
     let active_stops_app_state = app_state.clone();
@@ -565,93 +579,6 @@ async fn process_feed(
     let vehicles_feed = feed;
     let vehicles_app_state = app_state;
     let vehicles_task = async {
-        struct NextStopInfo {
-            stop_id: String,
-            stop_sequence: u64,
-            arrival_delay: Option<i64>,
-            arrival_time: Option<i64>,
-        }
-
-        let current_stop_sequences = vehicles_feed
-            .entity
-            .iter()
-            .filter_map(|x| x.vehicle.as_ref())
-            .filter_map(|vp| {
-                let trip_id = vp.trip.as_ref()?.trip_id();
-                if trip_id.is_empty() {
-                    return None;
-                }
-                vp.current_stop_sequence
-                    .map(|seq| (trip_id.to_string(), seq))
-            })
-            .collect::<HashMap<_, _>>();
-
-        let (trip_updates, all_stop_times): (HashMap<_, _>, HashMap<_, _>) = vehicles_feed
-            .entity
-            .iter()
-            .filter_map(|x| x.trip_update.as_ref())
-            .filter_map(|tu| {
-                let trip_id = tu.trip.trip_id().to_string();
-                if trip_id.is_empty() {
-                    return None;
-                }
-
-                let first_stu = next_stop::select_next_stop(
-                    &tu.stop_time_update,
-                    current_stop_sequences.get(&trip_id).copied(),
-                    jiff::Timestamp::now().as_second(),
-                )?;
-                let first_stop_sequence = first_stu.stop_sequence?;
-
-                let next_stop = NextStopInfo {
-                    stop_id: first_stu.stop_id().to_string(),
-                    stop_sequence: u64::from(first_stop_sequence),
-                    arrival_delay: first_stu
-                        .arrival
-                        .as_ref()
-                        .and_then(|a| a.delay.map(Into::into)),
-                    arrival_time: first_stu.arrival.as_ref().and_then(|a| a.time),
-                };
-
-                let all_stus = tu
-                    .stop_time_update
-                    .iter()
-                    .filter_map(|stu| {
-                        let stop_sequence = stu.stop_sequence?.into();
-                        Some(LiveStopTimeInfo {
-                            stop_id: stu.stop_id().to_string(),
-                            stop_sequence,
-                            arrival_time: stu.arrival.as_ref().and_then(|a| a.time),
-                            arrival_delay: stu
-                                .arrival
-                                .as_ref()
-                                .and_then(|a| a.delay.map(Into::into)),
-                        })
-                    })
-                    .collect::<Vec<_>>();
-
-                Some(((trip_id.clone(), next_stop), (trip_id, all_stus)))
-            })
-            .unzip();
-
-        let vehicles = vehicles_feed
-            .entity
-            .iter()
-            .filter_map(|x| x.vehicle.as_ref())
-            .filter_map(|x| Vehicle::try_from(x).ok())
-            .map(|mut v| {
-                if let Some(next) = trip_updates.get(&v.trip_id) {
-                    v.next_stop_id = Some(next.stop_id.clone());
-                    v.next_stop_sequence = Some(next.stop_sequence);
-                    v.next_stop_arrival_delay = next.arrival_delay;
-                    v.next_stop_arrival_time = next.arrival_time;
-                }
-                v
-            })
-            .collect::<Vec<_>>();
-
-        trace!(current_vehicles = ?vehicles.len(), "Updating vehicles");
-
         let previous_positions = {
             let rows = Database::logged(
                 "previous_positions",
@@ -672,7 +599,16 @@ async fn process_feed(
             match rows {
                 Ok(rows) => rows
                     .into_iter()
-                    .map(|r| (r.vehicle_id, (r.latitude, r.longitude, r.bearing)))
+                    .map(|r| {
+                        let previous = PreviousPosition {
+                            position: LatLng {
+                                lat: r.latitude,
+                                lng: r.longitude,
+                            },
+                            bearing: r.bearing,
+                        };
+                        (r.vehicle_id, previous)
+                    })
                     .collect(),
                 Err(e) => {
                     error!(?e, "Error fetching previous positions");
@@ -680,6 +616,37 @@ async fn process_feed(
                 }
             }
         };
+
+        let trip_keys = vehicles_feed
+            .entity
+            .iter()
+            .filter_map(|x| x.vehicle.as_ref()?.trip.as_ref())
+            .map(|trip| trip_key(trip.trip_id()))
+            .collect::<HashSet<_>>();
+        if let Err(e) = vehicle_tracker
+            .update_paths(&trip_keys, crate::proto::gtfs_schedule::data::generation())
+            .await
+        {
+            error!(?e, "Failed to load trip paths");
+        }
+
+        let schedule_offsets = crate::database::schedule_offsets::snapshot();
+        let LiveVehicles {
+            vehicles,
+            stop_times: all_stop_times,
+            base_midnight: best_base,
+            progress,
+        } = live_vehicles::build(
+            &vehicles_feed,
+            vehicle_tracker,
+            &FeedContext {
+                previous_positions: &previous_positions,
+                offsets: &schedule_offsets,
+                now: jiff::Timestamp::now().as_second(),
+            },
+        );
+
+        trace!(current_vehicles = ?vehicles.len(), "Updating vehicles");
 
         let metadata = crate::database::schedule_metadata::snapshot();
 
@@ -690,22 +657,6 @@ async fn process_feed(
                 v.trip_headsign = metadata
                     .headsign(&v.trip_id, &trip_key(&v.trip_id))
                     .map(str::to_owned);
-                if let Some((prev_lat, prev_lng, prev_bearing)) = previous_positions.get(&v.id) {
-                    let dist = haversine_distance(*prev_lat, *prev_lng, v.latitude, v.longitude);
-                    if dist < 5.0 {
-                        v.latitude = *prev_lat;
-                        v.longitude = *prev_lng;
-                        v.bearing = *prev_bearing;
-                    } else {
-                        v.prev_latitude = Some(*prev_lat);
-                        v.prev_longitude = Some(*prev_lng);
-                        v.bearing = Some(
-                            (v.longitude - *prev_lng)
-                                .atan2(v.latitude - *prev_lat)
-                                .to_degrees(),
-                        );
-                    }
-                }
                 v
             })
             .collect::<Vec<_>>();
@@ -713,20 +664,6 @@ async fn process_feed(
         let stmts_start = Instant::now();
 
         {
-            let schedule_offsets = crate::database::schedule_offsets::snapshot();
-
-            let best_base = schedule::compute_base_midnight(all_stop_times.iter().flat_map(
-                |(trip_id, stops)| {
-                    let key = trip_key(trip_id);
-                    let offsets = &schedule_offsets;
-                    stops.iter().map(move |s| {
-                        #[allow(clippy::cast_possible_wrap)]
-                        let offset = offsets.get(&key, s.stop_sequence as i64);
-                        (s.arrival_time, s.arrival_delay, offset)
-                    })
-                },
-            ));
-
             let mut tx = match Database::pool().begin().await {
                 Ok(tx) => tx,
                 Err(e) => {
@@ -784,6 +721,7 @@ async fn process_feed(
             }
         }
 
+        vehicle_tracker.progress = progress;
         trace!(took = ?stmts_start.elapsed(), "Updated vehicles");
 
         let vehicles = tokio::task::spawn_blocking(move || {
@@ -924,17 +862,4 @@ pub fn notify_session_revoked(user_id: &str, session_id: &str) {
             },
         ))
         .ok();
-}
-
-fn haversine_distance(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
-    let lat1_rad = lat1.to_radians();
-    let lat2_rad = lat2.to_radians();
-    let dlat = (lat2 - lat1).to_radians();
-    let dlng = (lng2 - lng1).to_radians();
-
-    let a = (lat1_rad.cos() * lat2_rad.cos())
-        .mul_add((dlng / 2.0).sin().powi(2), (dlat / 2.0).sin().powi(2));
-    let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-
-    6_371_000.0 * c
 }

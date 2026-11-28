@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { versionedSchema } from "../versioned";
+import { simpleVehicleSchema } from "./vehicle-data";
 
 const noticeSchema = z.object({
   id: z.string(),
@@ -11,9 +12,7 @@ export const v1MessageSchema = versionedSchema(
   1,
   z
     .object({
-      vehicles: z.array(
-        z.tuple([z.string(), z.string(), z.string(), z.number(), z.number()]).rest(z.unknown()),
-      ),
+      vehicles: z.array(simpleVehicleSchema),
     })
     .or(
       z.object({

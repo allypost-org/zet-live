@@ -29,29 +29,86 @@ const MIN_UPDATE_INTERVAL_MS = 1000 / 30;
 
 export type Position = [number, number];
 
-/** A linear move of one vehicle from `from` to `to`. Times use `performance.now()`. */
+/**
+ * A move of one vehicle along `points`, from `from` to `to`, at constant speed.
+ * Times use `performance.now()`.
+ */
 export type Track = {
   from: Position;
   to: Position;
+  /** All points of the move, from `from` to `to`. */
+  points: Position[];
+  /** Distance from `from` to each point of `points`, in degrees of latitude. */
+  distances: number[];
   start: number;
   duration: number;
 };
 
-const STILL = { start: 0, duration: 0 };
+/** How a vehicle moves to its new position. */
+export type VehicleMove = {
+  /** Expected time until the next position, in ms. */
+  duration: number;
+  /** The previous position that the server sent for the vehicle. */
+  from: Position | null;
+  /** Points of the route between `from` and the new position. */
+  via: Position[];
+};
 
 export type VehicleFeatureCollection = FeatureCollection<Point, { id: string }>;
+
+function distance(a: Position, b: Position): number {
+  const lngScale = Math.cos((a[1] * Math.PI) / 180);
+  return Math.hypot((b[0] - a[0]) * lngScale, b[1] - a[1]);
+}
+
+export function makeTrack(points: Position[], start: number, duration: number): Track {
+  const distances = [0];
+  for (let i = 1; i < points.length; i++) {
+    distances.push(distances[i - 1]! + distance(points[i - 1]!, points[i]!));
+  }
+  return {
+    from: points[0]!,
+    to: points[points.length - 1]!,
+    points,
+    distances,
+    start,
+    duration,
+  };
+}
+
+function stillTrack(position: Position): Track {
+  return makeTrack([position], 0, 0);
+}
 
 export function isMoving(track: Track, now: number): boolean {
   return now - track.start < track.duration;
 }
 
+/** Distance along the track at `now`, in the units of `track.distances`. */
+function distanceAt(track: Track, now: number): number {
+  const total = track.distances[track.distances.length - 1]!;
+  if (!isMoving(track, now)) return total;
+  return (total * (now - track.start)) / track.duration;
+}
+
 export function positionAt(track: Track, now: number): Position {
   if (!isMoving(track, now)) return track.to;
-  const t = (now - track.start) / track.duration;
-  return [
-    track.from[0] + (track.to[0] - track.from[0]) * t,
-    track.from[1] + (track.to[1] - track.from[1]) * t,
-  ];
+  const along = distanceAt(track, now);
+  const { points, distances } = track;
+  let i = 1;
+  while (i < points.length - 1 && distances[i]! < along) i++;
+  const from = points[i - 1]!;
+  const to = points[i]!;
+  const length = distances[i]! - distances[i - 1]!;
+  const t = length > 0 ? (along - distances[i - 1]!) / length : 1;
+  return [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t];
+}
+
+/** The points of a moving track after its position at `now`. */
+function remainingPoints(track: Track, now: number): Position[] {
+  if (!isMoving(track, now)) return [];
+  const along = distanceAt(track, now);
+  return track.points.filter((_, i) => track.distances[i]! > along);
 }
 
 function samePosition(a: Position, b: Position): boolean {
@@ -124,9 +181,9 @@ function largestVisibleStep(
 
 /**
  * Sets `data` on the GeoJSON source `sourceId`. With `motion` "animate", a
- * vehicle with a new position moves from its shown position to the new one.
- * The move takes the vehicle's value in `moveIntervals`, so that it ends when
- * the next position arrives. With "trail", vehicles jump to the new position.
+ * vehicle with a new position moves from its shown position to the new one,
+ * through the route points in `moves`. The move takes the duration in `moves`,
+ * so that it ends when the next position arrives. With "trail", vehicles jump to the new position.
  * Features are matched by `properties.id`. Returns a function that gives the
  * current track of a vehicle.
  */
@@ -134,7 +191,7 @@ export function useAnimatedVehicleSource(
   mapRef: { current: MapRef | null },
   sourceId: string,
   data: VehicleFeatureCollection,
-  moveIntervals: ReadonlyMap<string, number>,
+  moves: ReadonlyMap<string, VehicleMove>,
   ready: boolean,
   motion: VehicleMotion,
 ) {
@@ -151,27 +208,32 @@ export function useAnimatedVehicleSource(
     const animate = motion === "animate" && document.visibilityState === "visible";
     const next = new Map<string, Track>();
     for (const feature of data.features) {
+      const id = feature.properties.id;
       const target = feature.geometry.coordinates as Position;
-      const existing = tracks.current.get(feature.properties.id);
+      const existing = tracks.current.get(id);
       // A change to the trail mode ends the moves at their targets.
       if (animate && existing && samePosition(existing.to, target)) {
-        next.set(feature.properties.id, existing);
+        next.set(id, existing);
         continue;
       }
       const current = existing ? positionAt(existing, now) : target;
       const jump =
         Math.abs(current[0] - target[0]) > MAX_ANIMATED_MOVE_DEGREES ||
         Math.abs(current[1] - target[1]) > MAX_ANIMATED_MOVE_DEGREES;
+      if (!animate || jump) {
+        next.set(id, stillTrack(target));
+        continue;
+      }
+      const move = moves.get(id);
+      // The route points start at the previous position from the server. They
+      // are used only if the vehicle moves from there.
+      const via =
+        existing && move?.from && samePosition(existing.to, move.from)
+          ? [...remainingPoints(existing, now), ...move.via]
+          : [];
       next.set(
-        feature.properties.id,
-        animate && !jump
-          ? {
-              from: current,
-              to: target,
-              start: now,
-              duration: moveIntervals.get(feature.properties.id) ?? DEFAULT_MOVE_INTERVAL_MS,
-            }
-          : { from: target, to: target, ...STILL },
+        id,
+        makeTrack([current, ...via, target], now, move?.duration ?? DEFAULT_MOVE_INTERVAL_MS),
       );
     }
     tracks.current = next;
@@ -231,7 +293,7 @@ export function useAnimatedVehicleSource(
       cancelAnimationOrIdleCallback(frameId.current);
       frameId.current = null;
     };
-  }, [mapRef, sourceId, data, moveIntervals, ready, motion]);
+  }, [mapRef, sourceId, data, moves, ready, motion]);
 
   return useCallback((id: string): Track | undefined => tracks.current.get(id), []);
 }

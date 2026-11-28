@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use tokio::task::spawn_blocking;
 use tracing::{debug, warn};
 
+use super::geo::Metres;
+pub use super::geo::{Bearing, LatLng};
 use crate::database::Database;
 
 /// Length of shape before the stop that sets its direction.
@@ -19,13 +21,6 @@ const MAX_SHAPE_DISTANCE_METRES: f64 = 50.0;
 /// Minimum length of the weighted mean direction vector (0 to 1). A lower value
 /// means that the shapes through the stop go in different directions.
 const MIN_AGREEMENT: f64 = 0.8;
-const METRES_PER_DEGREE: f64 = 111_320.0;
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LatLng {
-    pub lat: f64,
-    pub lng: f64,
-}
 
 /// A stop and the number of scheduled trips on one shape that serve it.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,47 +31,6 @@ pub struct StopShapeUse {
     pub trips: i64,
 }
 
-/// Compass bearing in whole degrees: 0 is north, 90 is east. Range is `[0, 360)`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Bearing(f64);
-
-impl Bearing {
-    fn from_vector(east: f64, north: f64) -> Self {
-        Self(east.atan2(north).to_degrees().rem_euclid(360.0).round() % 360.0)
-    }
-
-    pub const fn degrees(self) -> f64 {
-        self.0
-    }
-}
-
-/// Local planar coordinates in metres around a reference point.
-#[derive(Debug, Clone, Copy)]
-struct Metres {
-    east: f64,
-    north: f64,
-}
-
-impl Metres {
-    fn from_lat_lng(point: LatLng, origin: LatLng) -> Self {
-        Self {
-            east: (point.lng - origin.lng) * origin.lat.to_radians().cos() * METRES_PER_DEGREE,
-            north: (point.lat - origin.lat) * METRES_PER_DEGREE,
-        }
-    }
-
-    fn lerp(self, to: Self, t: f64) -> Self {
-        Self {
-            east: (to.east - self.east).mul_add(t, self.east),
-            north: (to.north - self.north).mul_add(t, self.north),
-        }
-    }
-
-    fn distance(self, to: Self) -> f64 {
-        (to.east - self.east).hypot(to.north - self.north)
-    }
-}
-
 /// Direction of `shape` where it passes `stop`, as a unit vector `(east, north)`.
 /// Returns `None` if the shape does not pass within [`MAX_SHAPE_DISTANCE_METRES`].
 fn shape_direction_at(stop: LatLng, shape: &[LatLng]) -> Option<(f64, f64)> {
@@ -84,10 +38,7 @@ fn shape_direction_at(stop: LatLng, shape: &[LatLng]) -> Option<(f64, f64)> {
         .iter()
         .map(|&p| Metres::from_lat_lng(p, stop))
         .collect::<Vec<_>>();
-    let origin = Metres {
-        east: 0.0,
-        north: 0.0,
-    };
+    let origin = Metres::ORIGIN;
 
     let mut nearest: Option<(f64, usize, f64)> = None;
     for (i, pair) in points.windows(2).enumerate() {
@@ -130,13 +81,7 @@ fn shape_direction_at(stop: LatLng, shape: &[LatLng]) -> Option<(f64, f64)> {
     } else {
         (behind, at_stop)
     };
-    let length = from.distance(to);
-    (length > 0.0).then(|| {
-        (
-            (to.east - from.east) / length,
-            (to.north - from.north) / length,
-        )
-    })
+    from.direction_to(to)
 }
 
 /// Computes the bearing for each stop. A stop has no bearing when no shape passes
@@ -232,6 +177,7 @@ pub async fn load_stop_bearings() -> Result<HashMap<String, Bearing>, sqlx::Erro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proto::gtfs_schedule::data::geo::METRES_PER_DEGREE;
 
     /// Returns a point `east` and `north` metres from the origin stop.
     fn offset(east: f64, north: f64) -> LatLng {

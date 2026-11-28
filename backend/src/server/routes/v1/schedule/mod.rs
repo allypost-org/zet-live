@@ -15,8 +15,8 @@ mod departures;
 mod predictions;
 
 pub use departures::get_stop_departures;
-pub use predictions::compute_base_midnight;
 use predictions::{LiveStopTime, LiveVehicleAnchor, ScheduledStop, predict_trip_stop_times};
+pub use predictions::{compute_base_midnight, try_infer_base_midnight};
 
 async fn get_base_midnight() -> i64 {
     Database::logged(

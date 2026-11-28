@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT ON (st.trip_key, st.stop_sequence)\n                          st.trip_key AS \"trip_key!\", st.stop_sequence, st.stop_id,\n                          st.arrival_time_seconds,\n                          s.latitude AS \"latitude!\", s.longitude AS \"longitude!\"\n                   FROM gtfs_stop_times st\n                   JOIN gtfs_stops s ON s.stop_id = st.stop_id\n                   WHERE st.trip_key = ANY($1)\n                     AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL\n                   ORDER BY st.trip_key, st.stop_sequence, st.trip_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "trip_key!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "trip_key"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "stop_sequence",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "stop_sequence"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "stop_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "stop_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "arrival_time_seconds",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "arrival_time_seconds"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "latitude!",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "latitude"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "longitude!",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "longitude"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "5d34276b89a121a126951b7b0c3c61387e93f373b9b462c2c0b8525c4c1d60ca"
+}

@@ -9,11 +9,14 @@ use tracing::{debug, trace, warn};
 
 use crate::database::Database;
 
+pub mod geo;
 pub mod route;
 pub mod shape;
 pub mod stop;
 pub mod stop_bearing;
 pub mod trip;
+pub mod trip_path;
+pub mod trip_paths;
 
 pub use route::*;
 pub use shape::*;

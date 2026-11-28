@@ -1,11 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { MapRef } from "react-map-gl/maplibre";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import { useStore } from "@/store";
 import { calculateLatOffset } from "@/utils/map";
-import type { VehicleMotion } from "@/settings";
+import {
+  appRequestAnimationFrame,
+  cancelAnimationOrIdleCallback,
+} from "@/utils/polyfill/requestSomeCallback";
 import {
   isMoving,
+  makeTrack,
   positionAt,
   type Position,
   type Track,
@@ -13,10 +17,17 @@ import {
 
 /** Duration of the first move of the map to a vehicle that the map starts to follow. */
 const CATCH_UP_MS = 500;
-/** Duration of a map move to a vehicle that does not animate. */
+/** Duration of a map move to a vehicle that does not animate, or that jumped. */
 const JUMP_MS = 500;
-
-type FollowState = { id: string; catchUpUntil: number };
+/**
+ * Minimum time between two map moves. A continuous map animation draws the
+ * full map on each display frame, which uses much CPU on high refresh rates.
+ */
+const FOLLOW_INTERVAL_MS = 1000 / 30;
+/** A smaller move of the vehicle on the screen does not move the map. */
+const MIN_FOLLOW_STEP_PIXELS = 0.5;
+/** A larger move of the vehicle on the screen is a jump, so the map eases to it. */
+const MAX_FOLLOW_STEP_PIXELS = 100;
 
 function currentTrack(id: string, getTrack: (id: string) => Track | undefined): Track | null {
   const track = getTrack(id);
@@ -24,7 +35,7 @@ function currentTrack(id: string, getTrack: (id: string) => Track | undefined): 
   const vehicle = useStore.getState().vehicles.get(`vehicle-${id}`);
   if (!vehicle) return null;
   const position: Position = [vehicle.lng, vehicle.lat];
-  return { from: position, to: position, start: 0, duration: 0 };
+  return makeTrack([position], 0, 0);
 }
 
 function mapCenter(map: MaplibreMap, [lng, lat]: Position): Position {
@@ -32,67 +43,57 @@ function mapCenter(map: MaplibreMap, [lng, lat]: Position): Position {
 }
 
 /**
- * Moves the map with the vehicle until its current track ends. A linear move
- * keeps the vehicle at the same screen position.
- */
-function followTrack(map: MaplibreMap, track: Track) {
-  const now = performance.now();
-  const center = mapCenter(map, track.to);
-  if (isMoving(track, now)) {
-    map.easeTo({ center, duration: track.start + track.duration - now, easing: (t) => t });
-  } else {
-    map.easeTo({ center, duration: JUMP_MS });
-  }
-}
-
-/**
  * Keeps the vehicle `vehicleId` in the map centre. When the map starts to
  * follow a vehicle, it first moves to the vehicle in `CATCH_UP_MS`. After that,
- * it moves together with the shown vehicle. Call it after
- * `useAnimatedVehicleSource`, so that `getTrack` gives the latest tracks.
+ * it moves with the shown vehicle at most once per `FOLLOW_INTERVAL_MS`.
+ * `getTrack` gives the current track of a vehicle.
+ *
+ * `jumpTo` stops user gestures, so the map does not move while it moves for
+ * another reason, for example a user zoom or the catch-up move.
  */
 export function useFollowVehicle(
   mapRef: { current: MapRef | null },
   vehicleId: string | null,
   getTrack: (id: string) => Track | undefined,
-  motion: VehicleMotion,
 ) {
-  const vehicles = useStore((s) => s.vehicles);
-  const follow = useRef<FollowState | null>(null);
-
   useEffect(() => {
-    if (vehicleId === null) {
-      follow.current = null;
-      return;
-    }
-    const map = mapRef.current?.getMap();
-    if (!map) return;
-    const track = currentTrack(vehicleId, getTrack);
-    if (!track) return;
+    if (vehicleId === null) return;
 
-    const now = performance.now();
-    const state = follow.current;
-    if (state?.id === vehicleId) {
-      // The catch-up move continues with the latest track when it ends.
-      if (now < state.catchUpUntil) return;
-      followTrack(map, track);
-      return;
-    }
-
-    const started: FollowState = { id: vehicleId, catchUpUntil: now + CATCH_UP_MS };
-    follow.current = started;
-    // Aim at the place where the shown vehicle will be when the catch-up move ends.
-    map.easeTo({
-      center: mapCenter(map, positionAt(track, started.catchUpUntil)),
-      duration: CATCH_UP_MS,
-    });
-    // A user move that interrupts the catch-up also disables the follow mode,
-    // so the follow state changes and the handler does nothing.
-    void map.once("moveend", () => {
-      if (follow.current !== started) return;
-      started.catchUpUntil = 0;
-      const latest = currentTrack(vehicleId, getTrack);
-      if (latest) followTrack(map, latest);
-    });
-  }, [mapRef, vehicleId, getTrack, vehicles, motion]);
+    let frameId: number | null = null;
+    let caughtUp = false;
+    let lastMove = 0;
+    const tick = () => {
+      frameId = appRequestAnimationFrame(tick);
+      const map = mapRef.current?.getMap();
+      const now = performance.now();
+      if (!map || now - lastMove < FOLLOW_INTERVAL_MS || map.isMoving()) return;
+      // The map or the vehicle can arrive after the follow mode starts.
+      const track = currentTrack(vehicleId, getTrack);
+      if (!track) return;
+      lastMove = now;
+      if (!caughtUp) {
+        caughtUp = true;
+        // Aim at the place where the shown vehicle will be when the catch-up move ends.
+        map.easeTo({
+          center: mapCenter(map, positionAt(track, now + CATCH_UP_MS)),
+          duration: CATCH_UP_MS,
+        });
+        return;
+      }
+      const center = mapCenter(map, positionAt(track, now));
+      const from = map.project(map.getCenter());
+      const to = map.project(center);
+      const step = Math.hypot(to.x - from.x, to.y - from.y);
+      if (step < MIN_FOLLOW_STEP_PIXELS) return;
+      if (isMoving(track, now) && step <= MAX_FOLLOW_STEP_PIXELS) {
+        map.jumpTo({ center });
+      } else {
+        map.easeTo({ center, duration: JUMP_MS });
+      }
+    };
+    frameId = appRequestAnimationFrame(tick);
+    return () => {
+      cancelAnimationOrIdleCallback(frameId);
+    };
+  }, [mapRef, vehicleId, getTrack]);
 }

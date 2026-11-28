@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT shape_id, shape_pt_lat, shape_pt_lon\n                 FROM gtfs_shapes\n                 WHERE shape_id = ANY($1)\n                 ORDER BY shape_id, shape_pt_sequence",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "shape_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "shape_pt_lat",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_lat"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "shape_pt_lon",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_lon"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c63c67cc479e3812c7b84d882d94bece4898d496e815dacb812d5f7cadb7d166"
+}
